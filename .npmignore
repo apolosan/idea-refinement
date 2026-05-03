@@ -1,0 +1,9 @@
+tests/
+experiments/
+*.log
+.DS_Store
+.idea/
+.vscode/
+coverage/
+dist/
+*.tgz
