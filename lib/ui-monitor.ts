@@ -1,0 +1,368 @@
+import type { WorkflowProgressEventType, StageName, StageStatus, WorkflowProgressEvent, WorkflowStatus } from "./types.ts";
+
+export interface IdeaRefinementMonitorState {
+	workflowStatus: WorkflowStatus | "idle";
+	relativeCallDir?: string;
+	requestedLoops: number;
+	completedLoops: number;
+	currentLoop?: number;
+	currentStage?: StageName;
+	currentStageStatus?: StageStatus;
+	currentDetail?: string;
+	bootstrapStatus: StageStatus;
+	loopStageStatuses: {
+		develop: StageStatus;
+		evaluate: StageStatus;
+		learning: StageStatus;
+		report: StageStatus;
+		checklist: StageStatus;
+	};
+	activeTool?: string;
+	latestScore?: number;
+	lastError?: string;
+}
+
+const STATUS_DETAIL_LIMIT = 120;
+const WORKING_MESSAGE_LIMIT = 80;
+
+/**
+ * M2 fix: stageDisplayName now exported from ui-monitor.ts
+ * (was also defined locally in workflow.ts — removed duplicate)
+ */
+export function stageDisplayName(stageName: StageName): string {
+	switch (stageName) {
+		case "bootstrap":
+			return "artefatos iniciais";
+		case "develop":
+			return "desenvolvimento";
+		case "evaluate":
+			return "avaliação";
+		case "learning":
+			return "aprendizado";
+		case "report":
+			return "relatório";
+		case "checklist":
+			return "checklist de ações";
+		default:
+			return stageName;
+	}
+}
+
+/**
+ * M3 fix: buildStageStatusMessage exported for reuse in workflow.ts
+ * (was duplicated in multiple contexts)
+ */
+export function buildStageStatusMessage(statusMessage: string, detail?: string): string {
+	return detail ? `${statusMessage} • ${detail}` : statusMessage;
+}
+
+function workflowStatusLabel(status: WorkflowStatus | "idle"): string {
+	switch (status) {
+		case "running":
+			return "em execução";
+		case "success":
+			return "concluído";
+		case "failed":
+			return "falhou";
+		default:
+			return "aguardando";
+	}
+}
+
+/**
+ * Returns true if the terminal likely supports Unicode box-drawing and symbols.
+ * Checks TERM and LC_ALL/LC_CTYPE for known Unicode-capable values.
+ */
+export function shouldUseUnicode(): boolean {
+	const term = (process.env.TERM ?? "").toLowerCase();
+	const lcAll = (process.env.LC_ALL ?? process.env.LC_CTYPE ?? "").toLowerCase();
+
+	// Known non-Unicode terminals
+	if (term === "dumb" || term === "vt100" || term === "vt52") return false;
+
+	// Known Unicode-capable terminals
+	const unicodeTermPrefixes = ["xterm", "screen", "tmux", "rxvt", "alacritty", "kitty", "wezterm", "foot", "st-"];
+	for (const prefix of unicodeTermPrefixes) {
+		if (term.startsWith(prefix)) return true;
+	}
+
+	// Locale indicates UTF-8
+	if (lcAll.includes("utf-8") || lcAll.includes("utf8")) return true;
+
+	// Default: assume Unicode support on modern terminals
+	return true;
+}
+
+function stageStatusIcon(status: StageStatus | undefined, unicode: boolean): string {
+	if (unicode) {
+		switch (status) {
+			case "running":
+				return "…";
+			case "success":
+				return "✓";
+			case "failed":
+				return "✗";
+			case "pending":
+			default:
+				return "○";
+		}
+	}
+	switch (status) {
+		case "running":
+			return "~";
+		case "success":
+			return "+";
+		case "failed":
+			return "x";
+		case "pending":
+		default:
+			return "-";
+	}
+}
+
+function normalizeWhitespace(value: string | undefined): string {
+	return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function truncate(value: string | undefined, maxLength: number): string {
+	const normalized = normalizeWhitespace(value);
+	if (normalized.length <= maxLength) return normalized;
+	return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function buildLoopProgressBar(completedLoops: number, requestedLoops: number, width = 20): string {
+	if (requestedLoops <= 0) return "[....................]";
+	const safeWidth = Math.max(8, width);
+	const ratio = Math.max(0, Math.min(1, completedLoops / requestedLoops));
+	const filled = Math.round(ratio * safeWidth);
+	return `[${"#".repeat(filled)}${".".repeat(Math.max(0, safeWidth - filled))}]`;
+}
+
+function resetLoopStageStatuses(state: IdeaRefinementMonitorState): void {
+	state.loopStageStatuses = {
+		develop: "pending",
+		evaluate: "pending",
+		learning: "pending",
+		report: "pending",
+		checklist: "pending",
+	};
+}
+
+function setStageStatus(state: IdeaRefinementMonitorState, stageName: StageName, status: StageStatus): void {
+	if (stageName === "bootstrap") {
+		state.bootstrapStatus = status;
+		return;
+	}
+
+	state.loopStageStatuses[stageName] = status;
+}
+
+function formatStageReference(stageName: StageName | undefined, loopNumber: number | undefined, requestedLoops: number): string {
+	if (!stageName) return "preparando execução";
+	if (stageName === "bootstrap") return "bootstrap · artefatos iniciais";
+	if (loopNumber !== undefined) return `loop ${loopNumber}/${requestedLoops} · ${stageDisplayName(stageName)}`;
+	return stageDisplayName(stageName);
+}
+
+export function createIdeaRefinementMonitorState(): IdeaRefinementMonitorState {
+	return {
+		workflowStatus: "idle",
+		requestedLoops: 0,
+		completedLoops: 0,
+		bootstrapStatus: "pending",
+		loopStageStatuses: {
+			develop: "pending",
+			evaluate: "pending",
+			learning: "pending",
+			report: "pending",
+			checklist: "pending",
+		},
+	};
+}
+
+export function setIdeaRefinementMonitorDetail(state: IdeaRefinementMonitorState, detail: string | undefined): void {
+	state.currentDetail = detail;
+}
+
+type EventHandler = (state: IdeaRefinementMonitorState, event: WorkflowProgressEvent) => Partial<IdeaRefinementMonitorState> | void;
+
+function applyStateUpdate(state: IdeaRefinementMonitorState, update: Partial<IdeaRefinementMonitorState> | void): void {
+	if (!update) return;
+	for (const key of Object.keys(update) as (keyof IdeaRefinementMonitorState)[]) {
+		const value = update[key];
+		if (value !== undefined) {
+			(state as unknown as Record<string, unknown>)[key] = value;
+		}
+	}
+}
+
+const eventHandlers: Record<WorkflowProgressEventType, EventHandler> = {
+	workflow_started: (_state, event) => ({
+		workflowStatus: "running",
+		currentDetail: event.message,
+	}),
+
+	workflow_completed: (_state, _event) => ({
+		workflowStatus: "success",
+		// keep currentDetail from event.message via shared fields below
+	}),
+
+	workflow_failed: (_state, event) => ({
+		workflowStatus: "failed",
+		lastError: event.message,
+		currentDetail: event.message,
+		activeTool: undefined,
+	}),
+
+	stage_started: (state, event) => {
+		if (event.stageName === "develop" && event.loopNumber !== undefined && state.currentLoop !== event.loopNumber) {
+			resetLoopStageStatuses(state);
+		}
+		const stageStatus: StageStatus = event.stageStatus ?? "running";
+		setStageStatus(state, event.stageName!, stageStatus);
+		return {
+			currentLoop: event.loopNumber,
+			currentStage: event.stageName,
+			currentStageStatus: stageStatus,
+			workflowStatus: "running",
+			activeTool: undefined,
+			currentDetail: event.message,
+		};
+	},
+
+	stage_progress: (_state, event) => ({
+		currentStage: event.stageName,
+		currentLoop: event.loopNumber,
+		currentStageStatus: event.stageStatus,
+		currentDetail: event.message,
+	}),
+
+	tool_start: (_state, event) => ({
+		currentStage: event.stageName,
+		currentLoop: event.loopNumber,
+		activeTool: event.toolName,
+		currentDetail: event.message,
+	}),
+
+	tool_end: (_state, event) => ({
+		currentStage: event.stageName,
+		currentLoop: event.loopNumber,
+		currentDetail: event.message,
+		activeTool: undefined,
+	}),
+
+	stage_completed: (state, event) => {
+		const stageStatus: StageStatus = event.stageStatus ?? "success";
+		setStageStatus(state, event.stageName!, stageStatus);
+		return {
+			currentStage: event.stageName,
+			currentLoop: event.loopNumber,
+			currentStageStatus: stageStatus,
+			currentDetail: event.message,
+			activeTool: undefined,
+		};
+	},
+
+	stage_failed: (state, event) => {
+		const stageStatus: StageStatus = event.stageStatus ?? "failed";
+		setStageStatus(state, event.stageName!, stageStatus);
+		return {
+			currentStage: event.stageName,
+			currentLoop: event.loopNumber,
+			currentStageStatus: stageStatus,
+			currentDetail: event.message,
+			activeTool: undefined,
+		};
+	},
+
+	thinking: (_state, _event) => {
+		// No-op: thinking events don't change visible state
+	},
+
+	loop_completed: (_state, event) => ({
+		currentLoop: event.loopNumber,
+		currentDetail: event.message,
+		activeTool: undefined,
+	}),
+};
+
+export function applyIdeaRefinementProgressEvent(state: IdeaRefinementMonitorState, event: WorkflowProgressEvent): void {
+	if (event.relativeCallDir) state.relativeCallDir = event.relativeCallDir;
+	state.requestedLoops = event.requestedLoops;
+	state.completedLoops = event.completedLoops;
+	if (typeof event.score === "number") state.latestScore = event.score;
+
+	const handler = eventHandlers[event.type];
+	if (handler) {
+		const update = handler(state, event);
+		applyStateUpdate(state, update);
+	}
+
+	// Handle workflow_completed message separately since handler returns only status
+	if (event.type === "workflow_completed") {
+		state.currentDetail = event.message;
+	}
+}
+
+export function buildIdeaRefinementStatusLine(state: IdeaRefinementMonitorState): string | undefined {
+	const parts = ["idea-refine"];
+
+	if (state.relativeCallDir) {
+		parts.push(state.relativeCallDir.split("/").pop() ?? state.relativeCallDir);
+	}
+
+	// O10 fix: Include bootstrapStatus in status line when not pending
+	if (state.bootstrapStatus !== "pending") {
+		parts.push(`bootstrap ${state.bootstrapStatus}`);
+	}
+
+	if (state.currentLoop !== undefined && state.requestedLoops > 0) {
+		parts.push(`loop ${state.currentLoop}/${state.requestedLoops}`);
+	} else if (state.requestedLoops > 0) {
+		parts.push(`${state.completedLoops}/${state.requestedLoops} loops`);
+	}
+
+	if (state.currentStage) parts.push(stageDisplayName(state.currentStage));
+	if (state.activeTool) parts.push(`tool ${state.activeTool}`);
+	if (typeof state.latestScore === "number") parts.push(`score ${state.latestScore}/100`);
+	else parts.push("score --/100");
+	if (state.currentDetail) parts.push(truncate(state.currentDetail, STATUS_DETAIL_LIMIT));
+
+	return parts.length > 1 ? parts.join(" • ") : undefined;
+}
+
+export function buildIdeaRefinementWidgetLines(state: IdeaRefinementMonitorState): string[] {
+	const requestedLoops = state.requestedLoops || 0;
+	const loopBar = buildLoopProgressBar(state.completedLoops, requestedLoops, 20);
+	const lines: string[] = [];
+
+	// SECTION 1: Header (3 lines)
+	lines.push("[ IDEA REFINE MONITOR ]");
+	// P0-1: Score always visible — shows value or "--" placeholder regardless of status
+	const scoreSuffix = typeof state.latestScore === "number" ? ` | score ${state.latestScore}/100` : " | score --/100";
+	lines.push(`  status: ${workflowStatusLabel(state.workflowStatus)}${scoreSuffix}`);
+	lines.push(`  dir: ${state.relativeCallDir?.split("/").pop() ?? "preparando..."}`);
+
+	// SECTION 2: Progress (2 lines — A2: barra inline com loops)
+	lines.push("[ PROGRESS ]");
+	const currentLabel = state.currentLoop !== undefined ? ` (atual: ${state.currentLoop})` : "";
+	lines.push(`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`);
+
+	// SECTION 3: Pipeline (4 lines)
+	lines.push("[ STAGES ]");
+	const unicode = shouldUseUnicode();
+	lines.push(`  ${stageStatusIcon(state.bootstrapStatus, unicode)} bootstrap`);
+	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.develop, unicode)} develop`);
+	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.evaluate, unicode)} evaluate`);
+	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.learning, unicode)} learning`);
+	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.report, unicode)} report`);
+	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.checklist, unicode)} checklist`);
+
+	// SECTION 4: Current (3 lines)
+	lines.push("[ CURRENT ]");
+	lines.push(`  stage: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)}`);
+	lines.push(`  tool: ${state.activeTool ?? "none"}`);
+	lines.push(`  detail: ${truncate(state.currentDetail ?? state.lastError ?? "...", 120)}`);
+
+	return lines;
+}

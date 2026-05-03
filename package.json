@@ -1,0 +1,39 @@
+{
+  "name": "@apolosan/idea-refinement",
+  "version": "1.0.0",
+  "description": "Extensão para o Pi Coding Agent que executa um workflow iterativo forçado de refinamento de ideias via comando /idea-refine.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "idea-refinement",
+    "pi-coding-agent",
+    "workflow",
+    "refinamento"
+  ],
+  "homepage": "https://github.com/apolosan/idea-refinement#readme",
+  "bugs": {
+    "url": "https://github.com/apolosan/idea-refinement/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apolosan/idea-refinement.git"
+  },
+  "license": "MIT",
+  "author": "apolosan",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts",
+      "./artifact-guard.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
