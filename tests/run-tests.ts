@@ -12,6 +12,7 @@ import { run as runRunnerTests } from "./lib/runner.test.ts";
 import { run as runNumberGeneratorTests } from "./lib/number-generator.test.ts";
 import { run as runPromptsTests } from "./lib/prompts.test.ts";
 import { run as runArtifactGuardTests } from "./lib/artifact-guard.test.ts";
+import { run as runSpinnerTests } from "./lib/spinner.test.ts";
 import { run as runWorkflowTests } from "./lib/workflow.test.ts";
 
 async function run(): Promise<void> {
@@ -30,6 +31,7 @@ async function run(): Promise<void> {
 		{ name: "number-generator", run: runNumberGeneratorTests },
 		{ name: "prompts", run: runPromptsTests },
 		{ name: "artifact-guard", run: runArtifactGuardTests },
+		{ name: "spinner", run: runSpinnerTests },
 		{ name: "workflow", run: runWorkflowTests },
 	];
 
@@ -42,13 +44,13 @@ async function run(): Promise<void> {
 			passed++;
 		} catch (error) {
 			failed++;
-			console.error(`\n✗ Suite "${suite.name}" falhou:`);
+			console.error(`\n✗ Suite "${suite.name}" failed:`);
 			console.error(error);
 		}
 	}
 
 	console.log(`\n========================================`);
-	console.log(`Suites: ${passed} passaram, ${failed} falharam de ${suites.length} total`);
+	console.log(`Suites: ${passed} passed, ${failed} failed out of ${suites.length} total`);
 	console.log(`========================================`);
 
 	if (failed > 0) {

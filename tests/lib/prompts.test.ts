@@ -39,66 +39,66 @@ const mockWorkspace = {
 export async function run(): Promise<void> {
 	assert.ok(Array.isArray(WORKFLOW_ASSUMPTIONS));
 	assert.ok(WORKFLOW_ASSUMPTIONS.length > 0);
-	console.log("✓ WORKFLOW_ASSUMPTIONS definido");
+	console.log("✓ WORKFLOW_ASSUMPTIONS defined");
 
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /DIRECTIVE\.md/i);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /METRICS\.md/i);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /BACKLOG\.md/i);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /OPTIMIZATION/);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /CREATIVITY\/EXPLORATION/);
-	console.log("✓ INITIAL_ARTIFACTS_SYSTEM_PROMPT contém elementos obrigatórios");
+	console.log("✓ INITIAL_ARTIFACTS_SYSTEM_PROMPT contains required elements");
 
-	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /Matriz mínima de alternativas/i);
+	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /Minimum alternatives matrix/i);
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /RESPONSE\.md/i);
-	console.log("✓ DEVELOPMENT_SYSTEM_PROMPT contém elementos obrigatórios");
+	console.log("✓ DEVELOPMENT_SYSTEM_PROMPT contains required elements");
 
-	assert.match(EVALUATION_SYSTEM_PROMPT, /manter, ajustar, descartar ou testar depois/i);
+	assert.match(EVALUATION_SYSTEM_PROMPT, /keep, adjust, discard,? or test later/i);
 	assert.match(EVALUATION_SYSTEM_PROMPT, /Overall score:/);
-	console.log("✓ EVALUATION_SYSTEM_PROMPT contém elementos obrigatórios");
+	console.log("✓ EVALUATION_SYSTEM_PROMPT contains required elements");
 
-	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /prefira consolidar a expandir/i);
-	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /memória operacional/i);
+	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /prefer to consolidate rather than expand/i);
+	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /operational memory/i);
 	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /BACKLOG\.md/i);
-	console.log("✓ LEARNING_UPDATE_SYSTEM_PROMPT contém elementos obrigatórios");
+	console.log("✓ LEARNING_UPDATE_SYSTEM_PROMPT contains required elements");
 
-	assert.match(REPORT_SYSTEM_PROMPT, /Relatório de Investigação/i);
-	assert.match(REPORT_SYSTEM_PROMPT, /etiqueta epistêmica/i);
-	console.log("✓ REPORT_SYSTEM_PROMPT contém elementos obrigatórios");
+	assert.match(REPORT_SYSTEM_PROMPT, /Investigation Report/i);
+	assert.match(REPORT_SYSTEM_PROMPT, /epistemic tag/i);
+	console.log("✓ REPORT_SYSTEM_PROMPT contains required elements");
 
-	assert.match(CHECKLIST_SYSTEM_PROMPT, /Checklist de Ações/i);
-	assert.match(CHECKLIST_SYSTEM_PROMPT, /acionável/i);
-	console.log("✓ CHECKLIST_SYSTEM_PROMPT contém elementos obrigatórios");
+	assert.match(CHECKLIST_SYSTEM_PROMPT, /Action Checklist/i);
+	assert.match(CHECKLIST_SYSTEM_PROMPT, /actionable/i);
+	console.log("✓ CHECKLIST_SYSTEM_PROMPT contains required elements");
 
 	const initialPrompt = buildInitialArtifactsUserPrompt({ cwd: "/test", workspace: mockWorkspace, randomNumber: 42, policy: "OPTIMIZATION" });
 	assert.match(initialPrompt, /42/);
 	assert.match(initialPrompt, /OPTIMIZATION/);
 	assert.match(initialPrompt, /IDEA\.md/);
-	console.log("✓ buildInitialArtifactsUserPrompt constrói corretamente");
+	console.log("✓ buildInitialArtifactsUserPrompt builds correctly");
 
 	const devPrompt = buildDevelopmentUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 1, requestedLoops: 3, randomNumber: 7 });
 	assert.match(devPrompt, /1\/3/);
 	assert.match(devPrompt, /7/);
 	assert.match(devPrompt, /DIRECTIVE\.md/);
-	console.log("✓ buildDevelopmentUserPrompt constrói corretamente");
+	console.log("✓ buildDevelopmentUserPrompt builds correctly");
 
 	const evalPrompt = buildEvaluationUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 2, requestedLoops: 3 });
 	assert.match(evalPrompt, /2\/3/);
 	assert.match(evalPrompt, /FEEDBACK\.md/);
-	console.log("✓ buildEvaluationUserPrompt constrói corretamente");
+	console.log("✓ buildEvaluationUserPrompt builds correctly");
 
 	const learningPrompt = buildLearningUpdateUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 1, requestedLoops: 3 });
 	assert.match(learningPrompt, /1\/3/);
 	assert.match(learningPrompt, /LEARNING\.md/);
 	assert.match(learningPrompt, /BACKLOG\.md/);
-	console.log("✓ buildLearningUpdateUserPrompt constrói corretamente");
+	console.log("✓ buildLearningUpdateUserPrompt builds correctly");
 
 	const reportPrompt = buildReportUserPrompt({ cwd: "/test", workspace: mockWorkspace, requestedLoops: 5, completedLoops: 5 });
 	assert.match(reportPrompt, /5\/5/);
 	assert.match(reportPrompt, /REPORT\.md/);
-	console.log("✓ buildReportUserPrompt constrói corretamente");
+	console.log("✓ buildReportUserPrompt builds correctly");
 
 	const checklistPrompt = buildChecklistUserPrompt({ cwd: "/test", workspace: mockWorkspace, requestedLoops: 5, completedLoops: 5 });
 	assert.match(checklistPrompt, /5\/5/);
 	assert.match(checklistPrompt, /CHECKLIST\.md/);
-	console.log("✓ buildChecklistUserPrompt constrói corretamente");
+	console.log("✓ buildChecklistUserPrompt builds correctly");
 }

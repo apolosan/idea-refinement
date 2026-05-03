@@ -7,11 +7,11 @@ export async function run(): Promise<void> {
 	assert.deepEqual(parseProtectedRoots(undefined), []);
 	assert.deepEqual(parseProtectedRoots(JSON.stringify([1, "valid", null, "", "  "])), ["valid"]);
 	assert.deepEqual(parseProtectedRoots(JSON.stringify("string-not-array")), []);
-	console.log("✓ parseProtectedRoots parseia e filtra corretamente");
+	console.log("✓ parseProtectedRoots parses and filters correctly");
 
 	assert.equal(isPathInsideRoots("docs/idea_refinement/artifacts_call_01/LEARNING.md", "/repo", ["/repo/docs/idea_refinement"]), true);
 	assert.equal(isPathInsideRoots("src/index.ts", "/repo", ["/repo/docs/idea_refinement"]), false);
 	assert.equal(isPathInsideRoots("docs/idea_refinement", "/repo", ["/repo/docs/idea_refinement"]), true);
 	assert.equal(isPathInsideRoots("docs/idea_refinement_extra", "/repo", ["/repo/docs/idea_refinement"]), false);
-	console.log("✓ isPathInsideRoots protege apenas diretório de artefatos");
+	console.log("✓ isPathInsideRoots protects only the artifacts directory");
 }

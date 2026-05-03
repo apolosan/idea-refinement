@@ -34,7 +34,7 @@ export async function run(): Promise<void> {
 		assert.equal(diff.added.length, 0);
 		assert.equal(diff.removed.length, 0);
 	});
-	console.log("✓ post-hoc-check detecta mudanças entre snapshots");
+	console.log("✓ post-hoc-check detects changes between snapshots");
 
 	await withTempDir(async (dir) => {
 		const dir1 = path.join(dir, "snap-test");
@@ -50,23 +50,23 @@ export async function run(): Promise<void> {
 		assert.equal(diff.removed.length, 1);
 		assert.equal(diff.changed.length, 0);
 	});
-	console.log("✓ post-hoc-check detecta adições e remoções");
+	console.log("✓ post-hoc-check detects additions and removals");
 
 	await withTempDir(async (dir) => {
-		const nonexistentDir = path.join(dir, `nao-existe-xyz-${Date.now()}`);
+		const nonexistentDir = path.join(dir, `does-not-exist-xyz-${Date.now()}`);
 		const snap3 = await takeSnapshot(nonexistentDir);
 		assert.deepEqual(snap3, {});
 	});
-	console.log("✓ post-hoc-check retorna objeto vazio para diretório inexistente");
+	console.log("✓ post-hoc-check returns empty object for nonexistent directory");
 
 	// formatSnapshotDiff
 	const emptyDiff = { changed: [], added: [], removed: [], hasChanges: false };
-	assert.match(formatSnapshotDiff(emptyDiff), /Nenhuma alteração material/);
+	assert.match(formatSnapshotDiff(emptyDiff), /No material changes/);
 
 	const mixedDiff = { changed: ["a.ts"], added: ["b.ts"], removed: ["c.ts"], hasChanges: true };
 	const formatted = formatSnapshotDiff(mixedDiff);
-	assert.match(formatted, /alterados \(1\): a\.ts/);
-	assert.match(formatted, /adicionados \(1\): b\.ts/);
-	assert.match(formatted, /removidos \(1\): c\.ts/);
-	console.log("✓ formatSnapshotDiff formata corretamente");
+	assert.match(formatted, /changed \(1\): a\.ts/);
+	assert.match(formatted, /added \(1\): b\.ts/);
+	assert.match(formatted, /removed \(1\): c\.ts/);
+	console.log("✓ formatSnapshotDiff formats correctly");
 }

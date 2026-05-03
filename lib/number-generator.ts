@@ -1,21 +1,21 @@
 /**
- * Gera um número inteiro aleatório entre 1 e 100 (inclusive).
+ * Generates a random integer between 1 and 100 (inclusive).
  *
- * Usado como semente contextual para o workflow de refinamento de ideias.
- * O número inicial define a política principal da DIRECTIVE.md:
+ * Used as a contextual seed for the idea-refinement workflow.
+ * The initial number defines the primary policy of DIRECTIVE.md:
  * - 1–80  → OPTIMIZATION
  * - 81–100 → CREATIVITY/EXPLORATION
  *
- * Cada loop subsequente recebe seu próprio número como semente de variedade.
+ * Each subsequent loop receives its own number as a variety seed.
  *
- * Implementação baseada em Mersenne Twister misturado com entropia da
- * Web Crypto API (CSPRNG) para reduzir previsibilidade.
+ * Implementation based on Mersenne Twister mixed with entropy from
+ * the Web Crypto API (CSPRNG) to reduce predictability.
  */
 
 const UINT32_MOD = 0x1_0000_0000;
-const SAFE_QUOTIENT_MASK = 0x1f_ffff; // 21 bits para manter o resultado em Number.MAX_SAFE_INTEGER.
+const SAFE_QUOTIENT_MASK = 0x1f_ffff; // 21 bits to keep the result within Number.MAX_SAFE_INTEGER.
 
-/** Implementação do algoritmo Mersenne Twister (MT19937). */
+/** Mersenne Twister (MT19937) implementation. */
 class MersenneTwister {
 	private readonly mt: Uint32Array;
 	private index: number;
@@ -29,7 +29,7 @@ class MersenneTwister {
 		}
 	}
 
-	/** Extrai o próximo número inteiro sem sinal de 32 bits da sequência. */
+	/** Extracts the next unsigned 32-bit integer from the sequence. */
 	extractNumber(): number {
 		if (this.index === 0) {
 			this.generateNumbers();
@@ -45,7 +45,7 @@ class MersenneTwister {
 		return y >>> 0;
 	}
 
-	/** Gera a próxima rodada de números (temperamento). */
+	/** Generates the next round of numbers (tempering). */
 	private generateNumbers(): void {
 		for (let i = 0; i < 624; i++) {
 			const y = (this.mt[i] & 0x80000000) + (this.mt[(i + 1) % 624] & 0x7fffffff);
@@ -56,15 +56,15 @@ class MersenneTwister {
 		}
 	}
 
-	/** Retorna um número decimal entre 0 (inclusive) e 1 (exclusivo). */
+	/** Returns a decimal number between 0 (inclusive) and 1 (exclusive). */
 	random(): number {
 		return this.extractNumber() / UINT32_MOD;
 	}
 }
 
 /**
- * Gera um número aleatório entre 1 e 100 usando o resto da divisão por 100,
- * combinando Mersenne Twister com entropia criptográfica do ambiente.
+ * Generates a random number between 1 and 100 using modulo 100,
+ * combining Mersenne Twister with cryptographic entropy from the environment.
  */
 export function generateRandomNumber(): number {
 	const seed = Date.now();

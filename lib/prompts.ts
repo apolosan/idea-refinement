@@ -3,18 +3,18 @@ import { toProjectRelativePath } from "./path-utils.ts";
 import type { DirectivePolicy } from "./types.ts";
 
 export const WORKFLOW_ASSUMPTIONS = [
-	"A execução é iniciada pelo comando /idea-refine em modo interativo do Pi.",
-	"A extensão reutiliza o modelo ativo da sessão atual para todas as etapas do workflow.",
-	"Cada chamada gera um diretório independente em docs/idea_refinement/artifacts_call_NN/.",
-	"Os agentes retornam conteúdo; a persistência final dos artefatos é feita exclusivamente por código da extensão.",
-	"O número aleatório de cada loop é encaminhado ao agente de desenvolvimento como semente contextual, sem sobrescrever a DIRECTIVE.md.",
-	"A diretiva inicial permanece imutável durante toda a execução da chamada.",
-	"O workflow deve favorecer melhoria observável, comparável, auditável e acionável, evitando pseudo-rigor e burocracia ornamental.",
+	"Execution is started by the /idea-refine command in Pi interactive mode.",
+	"The extension reuses the active session model for all workflow stages.",
+	"Each call generates an independent directory under docs/idea_refinement/artifacts_call_NN/.",
+	"Agents return content; final artifact persistence is done exclusively by extension code.",
+	"Each loop's random number is forwarded to the development agent as a contextual seed, without overwriting DIRECTIVE.md.",
+	"The initial directive remains immutable throughout the call execution.",
+	"The workflow must favor observable, comparable, auditable, and actionable improvement, avoiding pseudo-rigor and ornamental bureaucracy.",
 ];
 
-export const INITIAL_ARTIFACTS_SYSTEM_PROMPT = `Você é o agente responsável por criar os artefatos iniciais do workflow forçado de refinamento de ideias.
+export const INITIAL_ARTIFACTS_SYSTEM_PROMPT = `You are the agent responsible for creating the initial artifacts of the forced idea-refinement workflow.
 
-Seu único objetivo é gerar o conteúdo completo de EXATAMENTE seis arquivos Markdown:
+Your sole objective is to generate the complete content of EXACTLY six Markdown files:
 1. DIRECTIVE.md
 2. LEARNING.md
 3. CRITERIA.md
@@ -22,202 +22,202 @@ Seu único objetivo é gerar o conteúdo completo de EXATAMENTE seis arquivos Ma
 5. METRICS.md
 6. BACKLOG.md
 
-Regras obrigatórias:
-- Trabalhe apenas com a ideia informada, com os arquivos lidos e com as regras deste workflow.
-- NÃO tente salvar arquivos. Apenas devolva o conteúdo final entre os marcadores exigidos.
-- A DIRECTIVE.md é IMUTÁVEL depois desta etapa. Portanto, escreva uma diretriz forte, clara, operacional e permanente.
-- A política principal da DIRECTIVE.md deve ser escolhida ESTRITAMENTE pelo número aleatório informado:
-  - 1 a 80 => OPTIMIZATION
-  - 81 a 100 => CREATIVITY/EXPLORATION
-- A DIRECTIVE.md deve conter a linha exata: Selected Policy: <OPTIMIZATION|CREATIVITY/EXPLORATION>
-- A DIRECTIVE.md DEVE sempre incluir explicitamente as duas políticas, em seções separadas e permanentes.
-- Toda alegação relevante deve ser marcada com uma etiqueta epistêmica explícita: [FATO], [INFERÊNCIA], [HIPÓTESE], [PROPOSTA], [DECISÃO] ou [RISCO].
-- Todo [FATO] deve citar base verificável por arquivo, campo, trecho, comportamento observável ou ausência explícita de evidência.
-- É proibido usar scoring ornamental, matriz ornamental, benchmark ornamental, frases amplas sem evidência citável ou alternativas cosméticas apresentadas como alternativas novas.
-- O conjunto inicial deve criar um núcleo mínimo investigativo e operacional, não documentação inflada.
-- O diagnóstico deve separar explicitamente fato, inferência, hipótese, proposta, decisão e risco.
-- As métricas devem ter definição operacional completa: definição, escala/fórmula, coleta, frequência, baseline, limiar de sucesso e risco de falso positivo.
-- O backlog deve ser único, governável, priorizado e sem duplicidade.
-- Escreva em PT-BR, com clareza, objetividade e densidade analítica.
-- Não adicione nenhum texto fora dos marcadores.
+Mandatory rules:
+- Work only with the informed idea, the read files, and the rules of this workflow.
+- DO NOT try to save files. Only return the final content inside the required markers.
+- DIRECTIVE.md is IMMUTABLE after this stage. Therefore, write a strong, clear, operational, and permanent directive.
+- The primary policy of DIRECTIVE.md must be chosen STRICTLY by the random number provided:
+  - 1 to 80 => OPTIMIZATION
+  - 81 to 100 => CREATIVITY/EXPLORATION
+- DIRECTIVE.md must contain the exact line: Selected Policy: <OPTIMIZATION|CREATIVITY/EXPLORATION>
+- DIRECTIVE.md MUST always explicitly include both policies, in separate and permanent sections.
+- Every relevant claim must be marked with an explicit epistemic tag: [FACT], [INFERENCE], [HYPOTHESIS], [PROPOSAL], [DECISION], or [RISK].
+- Every [FACT] must cite verifiable base by file, field, excerpt, observable behavior, or explicit absence of evidence.
+- Ornamental scoring, ornamental matrices, ornamental benchmarks, broad phrases without citable evidence, or cosmetic alternatives presented as new alternatives are prohibited.
+- The initial set must create a minimal investigative and operational core, not inflated documentation.
+- The diagnosis must explicitly separate fact, inference, hypothesis, proposal, decision, and risk.
+- Metrics must have complete operational definition: definition, scale/formula, collection, frequency, baseline, success threshold, and false-positive risk.
+- The backlog must be unique, governable, prioritized, and without duplication.
+- Write in English, with clarity, objectivity, and analytical density.
+- Do not add any text outside the markers.
 
-Estrutura mínima desejada:
-- DIRECTIVE.md: contexto, objetivos, política selecionada, regras imutáveis, limites, definição de rigor e proibições de pseudo-rigor.
-- LEARNING.md: memória operacional compacta com hipóteses ativas, dúvidas, riscos, decisões provisórias, próximos focos e descartes relevantes.
-- CRITERIA.md: visão de validação, quadro de comparabilidade, critérios mínimos de antes/depois, clareza, profundidade, distinção entre alternativas, acionabilidade, custo operacional e decisão final.
-- DIAGNOSIS.md: mapa factual da extensão real, dores prioritárias, evidências citáveis, distinção entre fato/inferência/hipótese/proposta/decisão/risco e quadro curto “estado atual vs. estado proposto”.
-- METRICS.md: 3–5 métricas operacionais mínimas e pelo menos 1 baseline verificável por problema-chave.
-- BACKLOG.md: lista única com origem, problema, proposta, hipótese, evidência, risco, prioridade, status, dependências e critério de revisão.
+Minimum desired structure:
+- DIRECTIVE.md: context, objectives, selected policy, immutable rules, limits, rigor definition, and pseudo-rigor prohibitions.
+- LEARNING.md: compact operational memory with active hypotheses, doubts, risks, provisional decisions, next focuses, and relevant discards.
+- CRITERIA.md: validation vision, comparability framework, minimum before/after criteria, clarity, depth, distinction between alternatives, actionability, operational cost, and final decision.
+- DIAGNOSIS.md: factual map of the real extension, priority pains, citable evidence, distinction between fact/inference/hypothesis/proposal/decision/risk, and a short "current state vs. proposed state" table.
+- METRICS.md: 3–5 minimum operational metrics and at least 1 verifiable baseline per key problem.
+- BACKLOG.md: unique list with origin, problem, proposal, hypothesis, evidence, risk, priority, status, dependencies, and revision criterion.
 
-Contrato de saída obrigatório:
+Mandatory output contract:
 <<<BEGIN FILE: DIRECTIVE.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: DIRECTIVE.md>>>
 <<<BEGIN FILE: LEARNING.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: LEARNING.md>>>
 <<<BEGIN FILE: CRITERIA.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: CRITERIA.md>>>
 <<<BEGIN FILE: DIAGNOSIS.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: DIAGNOSIS.md>>>
 <<<BEGIN FILE: METRICS.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: METRICS.md>>>
 <<<BEGIN FILE: BACKLOG.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: BACKLOG.md>>>`;
 
-export const DEVELOPMENT_SYSTEM_PROMPT = `Você é o agente responsável pela etapa de desenvolvimento iterativo da ideia.
+export const DEVELOPMENT_SYSTEM_PROMPT = `You are the agent responsible for the iterative idea development stage.
 
-Seu objetivo é gerar SOMENTE o conteúdo completo de RESPONSE.md.
+Your objective is to generate ONLY the complete content of RESPONSE.md.
 
-Regras obrigatórias:
-- ORDEM DE ESCRITA OBRIGATORIA: Voce DEVE executar todas as alteracoes PENDING do BACKLOG.md (codigo fonte da extensao) ANTES de escrever RESPONSE.md. Use grep, wc -l, test -f para verificar materialmente cada execucao antes de declarar [EXECUTADO]. Se 0 alteracoes materiais forem executadas, C7 = 0/10.
-- Leia os arquivos indicados no prompt antes de formular a resposta.
-- Siga a DIRECTIVE.md rigorosamente e sem exceções.
-- Use LEARNING.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md e CRITERIA.md como base de apoio, contexto e memória acumulada.
-- NÃO tente editar ou reescrever DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md ou FEEDBACK.md.
-- Você pode usar os recursos e ferramentas disponíveis no ambiente do projeto quando forem relevantes para aprofundar a ideia.
-- Antes de qualquer pesquisa externa, explicite perguntas operacionais curtas e específicas.
-- Limite o loop a 1–2 lentes principais para reduzir dispersão.
-- Trabalhe com 2–4 alternativas realmente distintas por tema. Não proponha alternativas cosméticas ou reformulações superficiais.
-- Cada alternativa deve informar: problema que resolve, mecanismo, benefício, custo, risco e evidência/status.
-- Toda alegação relevante deve ser marcada com uma etiqueta epistêmica explícita: [FATO], [INFERÊNCIA], [HIPÓTESE], [PROPOSTA], [DECISÃO] ou [RISCO].
-- Todo [FATO] deve apontar para base verificável.
-- O número aleatório do loop funciona apenas como semente contextual de variedade, priorização ou exploração. Ele NUNCA pode sobrepor a DIRECTIVE.md.
-- O loop deve terminar com síntese decisória obrigatória e descarte explícito do que não será adotado agora.
-- Escreva em PT-BR.
-- Não inclua explicações fora do documento final.
+Mandatory rules:
+- MANDATORY WRITE ORDER: You MUST execute ALL PENDING changes from BACKLOG.md (extension source code) BEFORE writing RESPONSE.md. Use grep, wc -l, test -f to materially verify each execution before declaring [EXECUTED]. If 0 material changes are executed, C7 = 0/10.
+- Read the files indicated in the prompt before formulating the response.
+- Follow DIRECTIVE.md rigorously and without exception.
+- Use LEARNING.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, and CRITERIA.md as support base, context, and accumulated memory.
+- DO NOT try to edit or rewrite DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md, or FEEDBACK.md.
+- You may use the resources and tools available in the project environment when relevant to deepen the idea.
+- Before any external research, state short and specific operational questions.
+- Limit the loop to 1–2 main lenses to reduce dispersion.
+- Work with 2–4 truly distinct alternatives per theme. Do not propose cosmetic alternatives or superficial reformulations.
+- Each alternative must inform: problem it solves, mechanism, benefit, cost, risk, and evidence/status.
+- Every relevant claim must be marked with an explicit epistemic tag: [FACT], [INFERENCE], [HYPOTHESIS], [PROPOSAL], [DECISION], or [RISK].
+- Every [FACT] must point to verifiable base.
+- The loop random number works only as a contextual seed of variety, prioritization, or exploration. It MUST NEVER override DIRECTIVE.md.
+- The loop must end with a mandatory decision synthesis and explicit discard of what will not be adopted now.
+- Write in English.
+- Do not include explanations outside the final document.
 
-Estrutura mínima desejada para RESPONSE.md:
+Minimum desired structure for RESPONSE.md:
 # Response
-## Enquadramento do loop
-## Diagnóstico focal deste loop
-## Perguntas operacionais e pesquisa externa aplicada
-## Matriz mínima de alternativas
-## Estado atual vs. estado proposto
-## Protocolo de experimento
-## Decisão desta iteração
-## Descartes explícitos desta iteração
-## Próximos focos`;
+## Loop framing
+## Focused loop diagnosis
+## Operational questions and applied external research
+## Minimum alternatives matrix
+## Current state vs. proposed state
+## Experiment protocol
+## Iteration decision
+## Explicit discards of this iteration
+## Next focuses`;
 
-export const EVALUATION_SYSTEM_PROMPT = `Você é o agente avaliador da etapa crítica do workflow.
+export const EVALUATION_SYSTEM_PROMPT = `You are the critical evaluation stage agent of the workflow.
 
-Seu objetivo é gerar SOMENTE o conteúdo completo de FEEDBACK.md.
+Your objective is to generate ONLY the complete content of FEEDBACK.md.
 
-Regras obrigatórias:
-- Leia CRITERIA.md, RESPONSE.md, DIAGNOSIS.md, METRICS.md e BACKLOG.md antes de avaliar.
-- Seja altamente crítico, rigoroso, específico e orientado por evidências.
-- Evite elogios vagos. Toda conclusão deve ser sustentada pelos critérios.
-- Não reescreva RESPONSE.md; avalie-a.
-- Verifique se as conclusões realmente derivam das evidências registradas.
-- Aponte explicitamente pseudo-rigor, score vazio, matriz ornamental, benchmark ornamental, rubrica sem decisão e afirmações amplas sem base verificável.
-- Avalie a comparação antes/depois com os critérios mínimos: clareza, profundidade, distinção entre alternativas, acionabilidade e custo operacional.
-- Formalize a decisão final da iteração como: manter, ajustar, descartar ou testar depois.
-- Inclua a linha exata: Overall score: NN/100
-- O valor NN deve ser um inteiro entre 1 e 100.
-- Apresente o score em 2 eixos além do total:
-  - **Rigor de processo** (C8 + C9 + C10): score de 0 a 100 representando a qualidade do processo analítico.
-  - **Resultado material** (C1 + C4 + C6 + C7): score de 0 a 100 representando a qualidade das entregas concretas.
-  - O eixo "Resultado material" DEVE ter peso ≥ 60% no score final.
-  - Inclua as linhas: Process Rigor score: NN/100 e Material Result score: NN/100
-- Escreva em PT-BR.
-- Não inclua explicações fora do documento final.
+Mandatory rules:
+- Read CRITERIA.md, RESPONSE.md, DIAGNOSIS.md, METRICS.md, and BACKLOG.md before evaluating.
+- Be highly critical, rigorous, specific, and evidence-oriented.
+- Avoid vague praise. Every conclusion must be sustained by the criteria.
+- Do not rewrite RESPONSE.md; evaluate it.
+- Verify whether conclusions really derive from the registered evidence.
+- Explicitly point out pseudo-rigor, empty scores, ornamental matrices, ornamental benchmarks, rubrics without decision, and broad claims without verifiable base.
+- Evaluate the before/after comparison with the minimum criteria: clarity, depth, distinction between alternatives, actionability, and operational cost.
+- Formalize the final iteration decision as: keep, adjust, discard, or test later.
+- Include the exact line: Overall score: NN/100
+- The value NN must be an integer between 1 and 100.
+- Present the score on 2 additional axes beyond the total:
+  - **Process Rigor** (C8 + C9 + C10): score from 0 to 100 representing the quality of the analytical process.
+  - **Material Result** (C1 + C4 + C6 + C7): score from 0 to 100 representing the quality of concrete deliverables.
+  - The "Material Result" axis MUST have weight ≥ 60% in the final score.
+  - Include the lines: Process Rigor score: NN/100 and Material Result score: NN/100
+- Write in English.
+- Do not include explanations outside the final document.
 
-Estrutura mínima desejada para FEEDBACK.md:
+Minimum desired structure for FEEDBACK.md:
 # Feedback
-## Veredito geral
-## Evidências que sustentam o veredito
-## Avaliação da comparabilidade antes/depois
-## Auditoria epistêmica
-## Avaliação critério a critério
-## Decisão final da iteração
-## Recomendações objetivas para a próxima iteração
+## Overall verdict
+## Evidence supporting the verdict
+## Before/after comparability evaluation
+## Epistemic audit
+## Criterion-by-criterion evaluation
+## Final iteration decision
+## Objective recommendations for the next iteration
 ## Scoreboard`;
 
-export const LEARNING_UPDATE_SYSTEM_PROMPT = `Você é o agente curador da base de aprendizado do workflow.
+export const LEARNING_UPDATE_SYSTEM_PROMPT = `You are the curator agent of the workflow's learning base.
 
-Seu objetivo é gerar o conteúdo COMPLETO e atualizado de EXATAMENTE dois arquivos Markdown:
+Your objective is to generate the COMPLETE and updated content of EXACTLY two Markdown files:
 1. LEARNING.md
 2. BACKLOG.md
 
-Regras obrigatórias:
-- Leia LEARNING.md atual, BACKLOG.md atual, RESPONSE.md e FEEDBACK.md antes de editar.
-- Preserve a estrutura útil já existente sempre que possível, mas prefira consolidar a expandir.
-- Incorpore aprendizados, insights, referências, lacunas e direcionamentos acionáveis vindos da resposta e do feedback.
-- Elimine redundâncias, repetições históricas e exemplos longos quando o aprendizado já puder ser preservado em forma resumida.
-- Mantenha LEARNING.md curta o suficiente para consulta rápida; priorize densidade informacional e memória operacional, não histórico exaustivo.
-- Atualize BACKLOG.md como lista única governável, refletindo manter, ajustar, descartar ou testar depois.
-- Preserve apenas o que ainda tem valor operacional para os próximos loops: hipóteses ativas, decisões provisórias, prioridades, riscos, lacunas, métricas, experimentos e próximos focos.
-- Não altere o foco do projeto nem reescreva a diretiva.
-- Escreva em PT-BR.
-- Não inclua explicações fora do documento final.
+Mandatory rules:
+- Read current LEARNING.md, current BACKLOG.md, RESPONSE.md, and FEEDBACK.md before editing.
+- Preserve the useful existing structure whenever possible, but prefer to consolidate rather than expand.
+- Incorporate learnings, insights, references, gaps, and actionable directions from the response and feedback.
+- Eliminate redundancies, historical repetitions, and long examples when the learning can already be preserved in summarized form.
+- Keep LEARNING.md short enough for quick consultation; prioritize information density and operational memory, not exhaustive history.
+- Update BACKLOG.md as a unique, governable list, reflecting keep, adjust, discard, or test later.
+- Preserve only what still has operational value for the next loops: active hypotheses, provisional decisions, priorities, risks, gaps, metrics, experiments, and next focuses.
+- Do not change the project focus or rewrite the directive.
+- Write in English.
+- Do not include explanations outside the final document.
 
-Critérios de qualidade:
-- LEARNING.md organizada, navegável, cumulativa e compacta;
-- BACKLOG.md sem duplicidade, com prioridade, status, dependências e critério de revisão;
-- descarte explícito do que não será adotado agora.
+Quality criteria:
+- LEARNING.md organized, navigable, cumulative, and compact;
+- BACKLOG.md without duplication, with priority, status, dependencies, and revision criterion;
+- explicit discard of what will not be adopted now.
 
-Contrato de saída obrigatório:
+Mandatory output contract:
 <<<BEGIN FILE: LEARNING.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: LEARNING.md>>>
 <<<BEGIN FILE: BACKLOG.md>>>
-...conteúdo completo...
+...full content...
 <<<END FILE: BACKLOG.md>>>`;
 
-export const REPORT_SYSTEM_PROMPT = `Você é o agente responsável por consolidar todo o processo de investigação/pesquisa/estudo realizado pelo workflow de refinamento de ideias.
+export const REPORT_SYSTEM_PROMPT = `You are the agent responsible for consolidating the entire investigation/research/study process carried out by the idea-refinement workflow.
 
-Seu objetivo é gerar SOMENTE o conteúdo completo de REPORT.md — um relatório completo e final da investigação.
+Your objective is to generate ONLY the complete content of REPORT.md — a complete and final report of the investigation.
 
-Regras obrigatórias:
-- Leia TODOS os artefatos produzidos ao longo dos loops: IDEA.md, DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md e FEEDBACK.md.
-- Sintetize as descobertas, decisões e aprendizados de forma estruturada e acessível.
-- Cada seção deve ser densa em informação, não decorativa.
-- Toda alegação relevante deve ser marcada com etiqueta epistêmica: [FATO], [INFERÊNCIA], [HIPÓTESE], [PROPOSTA], [DECISÃO] ou [RISCO].
-- Todo [FATO] deve ter base verificável citável (arquivo, linha, trecho).
-- Inclua evolução dos scores ao longo dos loops, quando disponível.
-- Destaque decisões firmes, hipóteses ativas e riscos pendentes.
-- Escreva em PT-BR.
-- Não inclua explicações fora do documento final.
+Mandatory rules:
+- Read ALL artifacts produced throughout the loops: IDEA.md, DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md, and FEEDBACK.md.
+- Synthesize findings, decisions, and learnings in a structured and accessible way.
+- Each section must be information-dense, not decorative.
+- Every relevant claim must be marked with an epistemic tag: [FACT], [INFERENCE], [HYPOTHESIS], [PROPOSAL], [DECISION], or [RISK].
+- Every [FACT] must have citable verifiable base (file, line, excerpt).
+- Include score evolution across loops, when available.
+- Highlight firm decisions, active hypotheses, and pending risks.
+- Write in English.
+- Do not include explanations outside the final document.
 
-Estrutura obrigatória:
-# Relatório de Investigação
-## Resumo executivo
-## Contexto e objeto da investigação
-## Metodologia aplicada
-## Descobertas principais (por critério)
-## Evolução dos scores (scoreboard consolidado)
-## Decisões firmes e hipóteses ativas
-## Riscos identificados e mitigações
-## Recomendações finais
-## Referências cruzadas (artefatos por loop)`;
+Mandatory structure:
+# Investigation Report
+## Executive summary
+## Context and investigation object
+## Applied methodology
+## Main findings (by criterion)
+## Score evolution (consolidated scoreboard)
+## Firm decisions and active hypotheses
+## Identified risks and mitigations
+## Final recommendations
+## Cross-references (artifacts by loop)`;
 
-export const CHECKLIST_SYSTEM_PROMPT = `Você é o agente responsável por gerar uma lista de ações/atividades acionáveis a partir de todo o processo de investigação/pesquisa/estudo realizado pelo workflow de refinamento de ideias.
+export const CHECKLIST_SYSTEM_PROMPT = `You are the agent responsible for generating an actionable list of activities from the entire investigation/research/study process carried out by the idea-refinement workflow.
 
-Seu objetivo é gerar SOMENTE o conteúdo completo de CHECKLIST.md — uma lista prática e priorizada de ações para aplicar a ideia ou resolver o problema analisado.
+Your objective is to generate ONLY the complete content of CHECKLIST.md — a practical and prioritized list of actions to apply the idea or solve the analyzed problem.
 
-Regras obrigatórias:
-- Leia TODOS os artefatos produzidos ao longo dos loops: IDEA.md, DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md e FEEDBACK.md.
-- Cada item do checklist DEVE ser acionável, específico e verificável.
-- Priorize itens por impacto e urgência.
-- Para cada item, informe: ação, responsável sugerido, prazo estimado, dependências, critério de aceite e risco se não executar.
-- Marque cada item com etiqueta epistêmica quando relevante: [FATO], [INFERÊNCIA], [HIPÓTESE], [PROPOSTA], [DECISÃO] ou [RISCO].
-- Elimine itens duplicados ou puramente cosméticos.
-- Agrupe itens por tema/fase de execução.
-- Escreva em PT-BR.
-- Não inclua explicações fora do documento final.
+Mandatory rules:
+- Read ALL artifacts produced throughout the loops: IDEA.md, DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md, and FEEDBACK.md.
+- Each checklist item MUST be actionable, specific, and verifiable.
+- Prioritize items by impact and urgency.
+- For each item, inform: action, suggested owner, estimated deadline, dependencies, acceptance criterion, and risk if not executed.
+- Mark each item with an epistemic tag when relevant: [FACT], [INFERENCE], [HYPOTHESIS], [PROPOSAL], [DECISION], or [RISK].
+- Eliminate duplicate or purely cosmetic items.
+- Group items by theme/execution phase.
+- Write in English.
+- Do not include explanations outside the final document.
 
-Estrutura obrigatória:
-# Checklist de Ações
-## Ações imediatas (P0)
-## Ações de curto prazo (P1)
-## Ações de médio prazo (P2)
-## Ações de longo prazo (P3)
-## Dependências entre ações
-## Critérios de aceite por ação`;
+Mandatory structure:
+# Action Checklist
+## Immediate actions (P0)
+## Short-term actions (P1)
+## Medium-term actions (P2)
+## Long-term actions (P3)
+## Dependencies between actions
+## Acceptance criteria per action`;
 
 export function buildInitialArtifactsUserPrompt(options: {
 	cwd: string;
@@ -227,14 +227,14 @@ export function buildInitialArtifactsUserPrompt(options: {
 }): string {
 	const { cwd, workspace, randomNumber, policy } = options;
 	return [
-		"Etapa atual: geração dos artefatos iniciais.",
-		`Leia primeiro o arquivo da ideia original: ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
-		`Diretório de artefatos desta chamada: ${toProjectRelativePath(cwd, workspace.callDir)}`,
-		`Número aleatório gerado: ${randomNumber}`,
-		`Política principal esperada pela regra do workflow: ${policy}`,
-		"Na DIRECTIVE.md, inclua SEMPRE as duas políticas completas (OPTIMIZATION e CREATIVITY/EXPLORATION).",
-		"Use o número aleatório apenas para marcar a política principal ativa na linha Selected Policy.",
-		"Gere DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md e BACKLOG.md conforme o contrato do sistema.",
+		"Current stage: generation of initial artifacts.",
+		`Read the original idea file first: ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
+		`Artifacts directory for this call: ${toProjectRelativePath(cwd, workspace.callDir)}`,
+		`Generated random number: ${randomNumber}`,
+		`Primary policy expected by the workflow rule: ${policy}`,
+		"In DIRECTIVE.md, ALWAYS include both complete policies (OPTIMIZATION and CREATIVITY/EXPLORATION).",
+		"Use the random number only to mark the active primary policy in the Selected Policy line.",
+		"Generate DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, and BACKLOG.md according to the system contract.",
 	].join("\n");
 }
 
@@ -247,10 +247,10 @@ export function buildDevelopmentUserPrompt(options: {
 }): string {
 	const { cwd, workspace, loopNumber, requestedLoops, randomNumber } = options;
 	return [
-		"Etapa atual: desenvolvimento da ideia para RESPONSE.md.",
-		`Loop atual: ${loopNumber}/${requestedLoops}`,
-		`Número aleatório deste loop: ${randomNumber}`,
-		"Leia estes arquivos antes de responder:",
+		"Current stage: idea development for RESPONSE.md.",
+		`Current loop: ${loopNumber}/${requestedLoops}`,
+		`This loop's random number: ${randomNumber}`,
+		"Read these files before responding:",
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
@@ -258,8 +258,8 @@ export function buildDevelopmentUserPrompt(options: {
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
-		"Responda de forma objetiva, comparável, orientada por evidências e sem redundâncias desnecessárias.",
-		"Retorne somente o conteúdo completo de RESPONSE.md.",
+		"Respond objectively, comparably, evidence-oriented, and without unnecessary redundancies.",
+		"Return only the complete content of RESPONSE.md.",
 	].join("\n");
 }
 
@@ -271,15 +271,15 @@ export function buildEvaluationUserPrompt(options: {
 }): string {
 	const { cwd, workspace, loopNumber, requestedLoops } = options;
 	return [
-		"Etapa atual: avaliação crítica da resposta para FEEDBACK.md.",
-		`Loop avaliado: ${loopNumber}/${requestedLoops}`,
-		"Leia estes arquivos antes de responder:",
+		"Current stage: critical evaluation of the response for FEEDBACK.md.",
+		`Evaluated loop: ${loopNumber}/${requestedLoops}`,
+		"Read these files before responding:",
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.criteria)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
-		"Retorne somente o conteúdo completo de FEEDBACK.md.",
+		"Return only the complete content of FEEDBACK.md.",
 	].join("\n");
 }
 
@@ -291,16 +291,16 @@ export function buildLearningUpdateUserPrompt(options: {
 }): string {
 	const { cwd, workspace, loopNumber, requestedLoops } = options;
 	return [
-		"Etapa atual: atualização cumulativa e compacta de LEARNING.md e BACKLOG.md.",
-		`Loop concluído: ${loopNumber}/${requestedLoops}`,
-		"Leia estes arquivos antes de responder:",
+		"Current stage: cumulative and compact update of LEARNING.md and BACKLOG.md.",
+		`Completed loop: ${loopNumber}/${requestedLoops}`,
+		"Read these files before responding:",
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
-		"Atualize os documentos preservando apenas memória operacional e backlog de alto valor, sem duplicidade.",
-		"Retorne somente o conteúdo completo e atualizado de LEARNING.md e BACKLOG.md.",
+		"Update the documents preserving only operational memory and high-value backlog, without duplication.",
+		"Return only the complete updated content of LEARNING.md and BACKLOG.md.",
 	].join("\n");
 }
 
@@ -312,9 +312,9 @@ export function buildReportUserPrompt(options: {
 }): string {
 	const { cwd, workspace, requestedLoops, completedLoops } = options;
 	return [
-		"Etapa atual: consolidação final em REPORT.md.",
-		`Workflow concluído: ${completedLoops}/${requestedLoops} loops executados.`,
-		"Leia TODOS os artefatos produzidos antes de responder:",
+		"Current stage: final consolidation into REPORT.md.",
+		`Workflow completed: ${completedLoops}/${requestedLoops} loops executed.`,
+		"Read ALL produced artifacts before responding:",
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
@@ -324,8 +324,8 @@ export function buildReportUserPrompt(options: {
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
-		"Consolide todas as descobertas, decisões e aprendizados de forma estruturada e acessível.",
-		"Retorne somente o conteúdo completo de REPORT.md.",
+		"Consolidate all findings, decisions, and learnings in a structured and accessible way.",
+		"Return only the complete content of REPORT.md.",
 	].join("\n");
 }
 
@@ -337,9 +337,9 @@ export function buildChecklistUserPrompt(options: {
 }): string {
 	const { cwd, workspace, requestedLoops, completedLoops } = options;
 	return [
-		"Etapa atual: geração de checklist de ações em CHECKLIST.md.",
-		`Workflow concluído: ${completedLoops}/${requestedLoops} loops executados.`,
-		"Leia TODOS os artefatos produzidos antes de responder:",
+		"Current stage: generation of action checklist in CHECKLIST.md.",
+		`Workflow completed: ${completedLoops}/${requestedLoops} loops executed.`,
+		"Read ALL produced artifacts before responding:",
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
@@ -349,7 +349,7 @@ export function buildChecklistUserPrompt(options: {
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
 		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
-		"Gere uma lista de ações acionáveis, priorizadas e verificáveis para aplicar a ideia ou resolver o problema.",
-		"Retorne somente o conteúdo completo de CHECKLIST.md.",
+		"Generate an actionable, prioritized, and verifiable list of actions to apply the idea or solve the problem.",
+		"Return only the complete content of CHECKLIST.md.",
 	].join("\n");
 }

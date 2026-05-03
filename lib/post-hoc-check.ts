@@ -1,15 +1,16 @@
 /**
- * post-hoc-check.ts — Snapshot SHA256 do diretório de código fonte
- * 
- * Propósito: Detectar se um loop "develop" realmente alterou arquivos .ts
- * da extensão, provendo evidência material de execução vs. pseudo-execução.
- * 
- * Mecanismo:
- * 1. Antes do develop: tira snapshot SHA256 de todos os .ts no diretório
- * 2. Depois do develop: tira novo snapshot e compara
- * 3. Retorna lista de arquivos alterados (ou vazia se nenhum)
- * 
- * Isto alimenta o critério C7 (Execução Material) do FEEDBACK.md.
+ * post-hoc-check.ts — SHA256 snapshot of the source-code directory
+ *
+ * Purpose: Detect whether a "develop" loop actually changed .ts files
+ * in the extension directory, providing material evidence of execution
+ * vs. pseudo-execution.
+ *
+ * Mechanism:
+ * 1. Before develop: take SHA256 snapshot of all .ts files in the directory
+ * 2. After develop: take a new snapshot and compare
+ * 3. Returns list of changed files (or empty if none)
+ *
+ * This feeds criterion C7 (Material Execution) of FEEDBACK.md.
  */
 
 import { createHash } from "node:crypto";
@@ -21,16 +22,16 @@ export interface FileSnapshot {
 }
 
 export interface SnapshotDiff {
-	changed: string[];       // arquivos com hash diferente
-	added: string[];         // arquivos novos
-	removed: string[];       // arquivos que sumiram
-	hasChanges: boolean;     // true se changed + added + removed > 0
+	changed: string[];       // files with different hash
+	added: string[];         // new files
+	removed: string[];       // files that disappeared
+	hasChanges: boolean;     // true if changed + added + removed > 0
 }
 
 /**
- * Tira snapshot SHA256 dos arquivos .ts do diretório raiz da extensão.
- * Retorna um mapa de caminho relativo → hash.
- * Se o diretório não existir, retorna objeto vazio.
+ * Takes a SHA256 snapshot of .ts files in the extension root directory.
+ * Returns a map of relative path → hash.
+ * If the directory does not exist, returns an empty object.
  */
 export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot> {
 	const snapshot: FileSnapshot = {};
@@ -70,7 +71,7 @@ export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot>
 }
 
 /**
- * Compara dois snapshots e retorna as diferenças.
+ * Compares two snapshots and returns the differences.
  */
 export function diffSnapshots(before: FileSnapshot, after: FileSnapshot): SnapshotDiff {
 	const changed: string[] = [];
@@ -101,23 +102,23 @@ export function diffSnapshots(before: FileSnapshot, after: FileSnapshot): Snapsh
 }
 
 /**
- * Formata o diff para inclusão em notificação/diagnóstico.
+ * Formats the diff for inclusion in a notification or diagnosis.
  */
 export function formatSnapshotDiff(diff: SnapshotDiff): string {
 	const parts: string[] = [];
 
 	if (diff.changed.length > 0) {
-		parts.push(`alterados (${diff.changed.length}): ${diff.changed.join(", ")}`);
+		parts.push(`changed (${diff.changed.length}): ${diff.changed.join(", ")}`);
 	}
 	if (diff.added.length > 0) {
-		parts.push(`adicionados (${diff.added.length}): ${diff.added.join(", ")}`);
+		parts.push(`added (${diff.added.length}): ${diff.added.join(", ")}`);
 	}
 	if (diff.removed.length > 0) {
-		parts.push(`removidos (${diff.removed.length}): ${diff.removed.join(", ")}`);
+		parts.push(`removed (${diff.removed.length}): ${diff.removed.join(", ")}`);
 	}
 
 	if (parts.length === 0) {
-		return "Nenhuma alteração material detectada no código fonte.";
+		return "No material changes detected in source code.";
 	}
 
 	return parts.join("; ");

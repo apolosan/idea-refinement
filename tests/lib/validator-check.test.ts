@@ -19,26 +19,26 @@ export async function run(): Promise<void> {
 		const responsePath = path.join(dir, "RESPONSE.md");
 		const text = [
 			"# Response",
-			"## Enquadramento do loop",
+			"## Loop framing",
 			"Content here with enough length to satisfy the minimum line count requirement for validation purposes.",
-			"## Diagnóstico focal deste loop",
-			"[FATO] File reference: src/index.ts",
-			"[FATO] Another fact: lib/utils.ts",
-			"## Matriz mínima de alternativas",
-			"| Alt | Problema | Mecanismo | Benefício | Custo | Risco |",
-			"|-----|----------|-----------|-----------|-------|-------|",
-			"| A   | X        | Y         | Z         | Low   | None  |",
-			"| B   | X2       | Y2        | Z2        | High  | Some  |",
-			"## Estado atual vs. estado proposto",
-			"antes: baseline 50ms, depois: target 30ms (40% improvement)",
-			"## Decisão desta iteração",
-			"Manter a abordagem atual e Ajustar parâmetros.",
-			"## Descartes explícitos desta iteração",
-			"Descartar alternativa C por custo excessivo.",
-			"## Próximos focos",
-			"Testar depois a integração com módulo externo.",
-			"[INFERÊNCIA] Based on data.",
-			"[RISCO] Potential failure.",
+			"## Focused loop diagnosis",
+			"[FACT] File reference: src/index.ts",
+			"[FACT] Another fact: lib/utils.ts",
+			"## Minimum alternatives matrix",
+			"| Alt | Problem | Mechanism | Benefit | Cost | Risk |",
+			"|-----|---------|-----------|---------|------|------|",
+			"| A   | X       | Y         | Z       | Low  | None |",
+			"| B   | X2      | Y2        | Z2      | High | Some |",
+			"## Current state vs. proposed state",
+			"before: baseline 50ms, after: target 30ms (40% improvement)",
+			"## Iteration decision",
+			"Keep the current approach and Adjust parameters.",
+			"## Explicit discards of this iteration",
+			"Discard alternative C due to excessive cost.",
+			"## Next focuses",
+			"Test later the integration with external module.",
+			"[INFERENCE] Based on data.",
+			"[RISK] Potential failure.",
 		].join("\n");
 		await fs.writeFile(responsePath, text, "utf-8");
 		await runResponseValidatorCheck(responsePath);
@@ -50,7 +50,7 @@ export async function run(): Promise<void> {
 		assert.match(output, /Validator Check/);
 		assert.match(output, /PASS/);
 	});
-	console.log("✓ runResponseValidatorCheck gera relatório para resposta válida");
+	console.log("✓ runResponseValidatorCheck generates report for valid response");
 
 	await withTempDir(async (dir) => {
 		const missingPath = path.join(dir, "MISSING.md");
@@ -58,5 +58,5 @@ export async function run(): Promise<void> {
 		const expectedPath = path.join(dir, "validator-check-output.md");
 		assert.equal(existsSync(expectedPath), false);
 	});
-	console.log("✓ runResponseValidatorCheck ignora arquivo inexistente");
+	console.log("✓ runResponseValidatorCheck ignores missing file");
 }

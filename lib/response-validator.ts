@@ -2,7 +2,7 @@
  * B1: Response Validator
  *
  * Validates RESPONSE.md structure and content quality after generation.
- * Enforces minimum criteria to prevent metatexto/planning-only patterns.
+ * Enforces minimum criteria to prevent metatext/planning-only patterns.
  *
  * Uses unified validation constants from validation-constants.ts to avoid
  * duplication with validator-check.ts.
@@ -12,7 +12,7 @@ import {
 	DECISION_TERMS,
 	EPISTEMIC_TAGS,
 	MIN_DECISION_COUNT,
-	MIN_FATO_COUNT,
+	MIN_FACT_COUNT,
 	MIN_LINE_COUNT,
 	MIN_TAG_COUNT,
 	REQUIRED_SECTIONS,
@@ -82,7 +82,7 @@ export function validateResponse(text: string): ValidationResult {
 	});
 	if (hasTags) points += 15;
 
-	// C5: Decision terms used (unified constants: Manter/Descartar/Ajustar/Testar depois)
+	// C5: Decision terms used (unified constants: Keep/Adjust/Discard/Test later)
 	let decisionCount = 0;
 	for (const term of DECISION_TERMS) {
 		if (text.includes(term)) decisionCount += 1;
@@ -95,28 +95,28 @@ export function validateResponse(text: string): ValidationResult {
 	});
 	if (hasDecisions) points += 15;
 
-	// C6: Evidence citations (FATO + file reference, unified constant: 2 minimum)
-	const fatoWithRef = (text.match(/\[FATO\]/g) || []).length;
-	const hasFatoRefs = fatoWithRef >= MIN_FATO_COUNT;
+	// C6: Evidence citations (FACT + file reference, unified constant: 2 minimum)
+	const factWithRef = (text.match(/\[FACT\]/g) || []).length;
+	const hasFactRefs = factWithRef >= MIN_FACT_COUNT;
 	checks.push({
-		name: "C6: At least 2 [FATO] citations",
-		passed: hasFatoRefs,
-		detail: `${fatoWithRef} citations found`,
+		name: "C6: At least 2 [FACT] citations",
+		passed: hasFactRefs,
+		detail: `${factWithRef} citations found`,
 	});
-	if (hasFatoRefs) points += 10;
+	if (hasFactRefs) points += 10;
 
-	// C7: Avoids "Adotar" (invalid term per LEARNING.md)
-	const hasAdotar = /[Aa]dotar/.test(text);
+	// C7: Avoids "Adopt" (invalid term per LEARNING.md)
+	const hasAdopt = /\b[Aa]dopt\b/.test(text);
 	checks.push({
-		name: "C7: Does NOT use 'Adotar'",
-		passed: !hasAdotar,
-		detail: hasAdotar ? "'Adotar' found" : "no invalid term",
+		name: "C7: Does NOT use 'Adopt'",
+		passed: !hasAdopt,
+		detail: hasAdopt ? "'Adopt' found" : "no invalid term",
 	});
-	if (!hasAdotar) points += 5;
+	if (!hasAdopt) points += 5;
 
 	// C8: Metrics change described (before/after)
-	const hasMetricDelta = /\bantes?\b.*\bdepois\b|\bdepois\b.*\bantes?\b|\bbaseline\b|\bantes\/depois\b/i.test(text);
-	const hasNumbers = /\d+%|\d+ms|\d+\/\d+|\d+ linhas|score \d+/i.test(text);
+	const hasMetricDelta = /\bbefore\b.*\bafter\b|\bafter\b.*\bbefore\b|\bbaseline\b|\bbefore\/after\b/i.test(text);
+	const hasNumbers = /\d+%|\d+ms|\d+\/\d+|\d+ lines|score \d+/i.test(text);
 	const c8 = hasMetricDelta && hasNumbers;
 	checks.push({
 		name: "C8: Before/after metrics with numbers",

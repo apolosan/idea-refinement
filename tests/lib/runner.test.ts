@@ -33,7 +33,7 @@ async function waitForMatch(filePath: string, pattern: RegExp, timeoutMs = 2_000
 export async function run(): Promise<void> {
 	const piArgs = buildPiArgs({
 		tempPromptPath: "/tmp/idea-refinement-system-prompt.md",
-		userPrompt: "Usuário final",
+		userPrompt: "End user",
 		model: "github-copilot/gpt-5.4",
 		thinkingLevel: "high",
 		cwd: "/repo",
@@ -45,8 +45,8 @@ export async function run(): Promise<void> {
 	assert.ok(piArgs.includes("--thinking"));
 	assert.equal(piArgs[piArgs.indexOf("--thinking") + 1], "high");
 	// userPrompt is appended after all flags
-	assert.equal(piArgs.indexOf("Usuário final"), piArgs.length - 1);
-	console.log("✓ buildPiArgs constrói argumentos corretamente");
+	assert.equal(piArgs.indexOf("End user"), piArgs.length - 1);
+	console.log("✓ buildPiArgs builds arguments correctly");
 
 	await withTempDir(async (dir) => {
 		const scriptPath = path.join(dir, "fake-pi-stage.js");
@@ -58,7 +58,7 @@ export async function run(): Promise<void> {
 				"const events = [",
 				"  [0, { type: 'session' }],",
 				"  [5, { type: 'message_update', assistantMessageEvent: { type: 'thinking_start' }, message: { role: 'assistant' } }],",
-				"  [8, { type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: 'Raciocínio parcial do agente', partial: { role: 'assistant' } }, message: { role: 'assistant' } }],",
+				"  [8, { type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: 'Partial agent reasoning', partial: { role: 'assistant' } }, message: { role: 'assistant' } }],",
 				"  [10, { type: 'tool_execution_start', toolCallId: 'tool-1', toolName: 'read', args: { path: 'prompt.md' } }],",
 				"  [20, { type: 'tool_execution_end', toolCallId: 'tool-1', toolName: 'read', result: { content: [{ type: 'text', text: 'ok' }] }, isError: false }],",
 				"  [25, { type: 'message_update', assistantMessageEvent: { type: 'thinking_end' }, message: { role: 'assistant' } }],",
@@ -69,7 +69,7 @@ export async function run(): Promise<void> {
 				"for (const [delay, event] of events) {",
 				"  setTimeout(() => process.stdout.write(JSON.stringify(event) + '\\n'), delay);",
 				"}",
-				"setTimeout(() => process.stderr.write('stderr parcial\\n'), 15);",
+				"setTimeout(() => process.stderr.write('partial stderr\\n'), 15);",
 				"setTimeout(() => process.exit(0), 90);",
 			].join("\n"),
 			"utf8",
@@ -100,14 +100,14 @@ export async function run(): Promise<void> {
 		assert.equal(result.text.trim(), "OK final");
 		assert.equal(result.model, "fake-model");
 		assert.equal(result.usage.turns, 1);
-		assert.match(progressMessages.join("\n"), /Aguardando resposta do agente/);
-		assert.match(progressMessages.join("\n"), /Executando ferramenta read/);
-		assert.match(progressMessages.join("\n"), /Redigindo resposta/);
+		assert.match(progressMessages.join("\n"), /Waiting for agent response/);
+		assert.match(progressMessages.join("\n"), /Executing tool read/);
+		assert.match(progressMessages.join("\n"), /Drafting response/);
 		assert.match(streamEvents.join("\n"), /tool_execution_start/);
 		assert.match(persistedLog, /OK final/);
-		assert.doesNotMatch(persistedLog, /Raciocínio parcial do agente/);
+		assert.doesNotMatch(persistedLog, /Partial agent reasoning/);
 		assert.doesNotMatch(persistedLog, /x{1000}/);
-		assert.match(await fs.readFile(stderrPath, "utf8"), /stderr parcial/);
+		assert.match(await fs.readFile(stderrPath, "utf8"), /partial stderr/);
 	});
-	console.log("✓ runPiStage transmite logs incrementalmente e reporta progresso");
+	console.log("✓ runPiStage transmits logs incrementally and reports progress");
 }

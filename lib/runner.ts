@@ -52,8 +52,34 @@ function zeroUsage(): StageUsage {
 	};
 }
 
-function aggregateUsage(target: StageUsage, message: any): void {
-	const usage = message?.usage;
+interface PiMessagePart {
+	type?: string;
+	text?: string;
+}
+
+interface PiMessageCost {
+	total?: number;
+}
+
+interface PiMessageUsage {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	totalTokens?: number;
+	cost?: PiMessageCost;
+}
+
+interface PiMessage {
+	content?: unknown;
+	stopReason?: string;
+	errorMessage?: string;
+	model?: string;
+	usage?: PiMessageUsage;
+}
+
+function aggregateUsage(target: StageUsage, message: PiMessage): void {
+	const usage = message.usage;
 	if (!usage) return;
 	target.turns += 1;
 	target.input += usage.input ?? 0;
@@ -64,19 +90,20 @@ function aggregateUsage(target: StageUsage, message: any): void {
 	target.contextTokens = usage.totalTokens ?? target.contextTokens;
 }
 
-function summarizeAssistantMessage(message: any): AssistantMessageSummary {
-	const text = Array.isArray(message?.content)
-		? message.content
-				.filter((part: any) => part?.type === "text")
-				.map((part: any) => part.text)
+function summarizeAssistantMessage(message: PiMessage): AssistantMessageSummary {
+	const text = Array.isArray(message.content)
+		? (message.content as PiMessagePart[])
+				.filter((part) => part?.type === "text")
+				.map((part) => part.text)
+				.filter((t): t is string => typeof t === "string")
 				.join("\n")
 		: undefined;
 
 	return {
 		text,
-		stopReason: typeof message?.stopReason === "string" ? message.stopReason : undefined,
-		errorMessage: typeof message?.errorMessage === "string" ? message.errorMessage : undefined,
-		model: typeof message?.model === "string" ? message.model : undefined,
+		stopReason: typeof message.stopReason === "string" ? message.stopReason : undefined,
+		errorMessage: typeof message.errorMessage === "string" ? message.errorMessage : undefined,
+		model: typeof message.model === "string" ? message.model : undefined,
 	};
 }
 
@@ -134,12 +161,16 @@ function appendTail(current: string, next: string, maxChars: number): string {
 	return current.slice(-available) + next;
 }
 
-function safeParseJson(line: string): any | undefined {
+function safeParseJson(line: string): unknown {
 	try {
 		return JSON.parse(line);
 	} catch {
 		return undefined;
 	}
+}
+
+function isPiEvent(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>).type === "string";
 }
 
 // O6 fix: Remove "error" from stdout filter — errors come via stderr
@@ -249,7 +280,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 		onEvent?.(event);
 	};
 
-	emitProgress("Aguardando resposta do agente...", true);
+	emitProgress("Waiting for agent response...", true);
 
 	try {
 		const args = buildPiArgs({
@@ -309,52 +340,52 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			const processLine = (line: string) => {
 				if (line.length === 0) return;
 
-				if (line.includes('"type":"tool_execution_start"')) {
-					const event = safeParseJson(line);
-					const toolName = typeof event?.toolName === "string" ? event.toolName : "ferramenta";
-					emitProgress(`Executando ferramenta ${toolName}...`);
-					emitEvent({ type: "tool_execution_start", toolName, args: event?.args });
+				const parsed = safeParseJson(line);
+				if (!isPiEvent(parsed)) return;
+
+				if (parsed.type === "tool_execution_start") {
+					const toolName = typeof parsed.toolName === "string" ? parsed.toolName : "tool";
+					emitProgress(`Executing tool ${toolName}...`);
+					emitEvent({ type: "tool_execution_start", toolName, args: parsed.args });
 					return;
 				}
 
-				if (line.includes('"type":"tool_execution_end"')) {
-					const toolName = extractJsonStringValueAfter(line, '"type":"tool_execution_end"', "toolName") ?? "ferramenta";
-					const isError = line.includes('"isError":true');
-					emitProgress(isError ? `Ferramenta ${toolName} retornou erro.` : `Ferramenta ${toolName} concluída.`);
+				if (parsed.type === "tool_execution_end") {
+					const toolName = typeof parsed.toolName === "string" ? parsed.toolName : "tool";
+					const isError = parsed.isError === true;
+					emitProgress(isError ? `Tool ${toolName} returned an error.` : `Tool ${toolName} completed.`);
 					emitEvent({ type: "tool_execution_end", toolName, isError });
 					return;
 				}
 
-				if (line.includes('"type":"message_update"')) {
-					if (line.includes('"assistantMessageEvent":{"type":"thinking_start"')) {
-						emitProgress("Analisando instruções...");
-						return;
+				if (parsed.type === "message_update") {
+					const assistantEvent = (parsed as Record<string, unknown>).assistantMessageEvent;
+					if (isPiEvent(assistantEvent)) {
+						if (assistantEvent.type === "thinking_start") {
+							emitProgress("Analyzing instructions...");
+							return;
+						}
+						if (assistantEvent.type === "text_start") {
+							emitProgress("Drafting response...");
+							emitEvent({ type: "text_start" });
+							return;
+						}
+						if (assistantEvent.type === "text_end") {
+							emitProgress("Finalizing response...");
+							emitEvent({ type: "text_end" });
+							return;
+						}
 					}
-
-					if (line.includes('"assistantMessageEvent":{"type":"text_start"')) {
-						emitProgress("Redigindo resposta...");
-						emitEvent({ type: "text_start" });
-						return;
-					}
-
-					if (line.includes('"assistantMessageEvent":{"type":"text_end"')) {
-						emitProgress("Finalizando resposta...");
-						emitEvent({ type: "text_end" });
-						return;
-					}
-				}
-
-				if (!line.includes('"type":"message_end"') || !line.includes('"role":"assistant"')) {
 					return;
 				}
 
-				const event = safeParseJson(line);
-				if (event?.type !== "message_end" || event.message?.role !== "assistant") {
-					return;
-				}
+				if (parsed.type !== "message_end") return;
 
-				lastAssistant = summarizeAssistantMessage(event.message);
-				aggregateUsage(usage, event.message);
+				const msg = (parsed as Record<string, unknown>).message;
+				if (typeof msg !== "object" || msg === null || typeof (msg as Record<string, unknown>).role !== "string") return;
+
+				lastAssistant = summarizeAssistantMessage(msg as PiMessage);
+				aggregateUsage(usage, msg as PiMessage);
 				emitEvent({
 					type: "message_end",
 					text: lastAssistant.text,
@@ -362,7 +393,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 					stopReason: lastAssistant.stopReason,
 					errorMessage: lastAssistant.errorMessage,
 				});
-				emitProgress(lastAssistant.text ? "Resposta recebida, validando saída..." : "Turno concluído, aguardando próximo passo...", true);
+				emitProgress(lastAssistant.text ? "Response received, validating output..." : "Turn completed, waiting for next step...", true);
 			};
 
 			proc.stdout.on("data", (chunk) => {
@@ -390,7 +421,8 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 					processLine(finalLine);
 				}
 				stderrTail = appendTail(stderrTail, stderrDecoder.end(), STDERR_TAIL_LIMIT);
-				resolve(code ?? 0);
+				// E4 fix: exitCode === null (SIGKILL/OOM) must be treated as failure
+				resolve(code === null ? 1 : code);
 			});
 		});
 

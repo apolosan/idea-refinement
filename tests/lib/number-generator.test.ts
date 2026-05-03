@@ -9,7 +9,7 @@ export async function run(): Promise<void> {
 		assert.ok(num >= 1 && num <= 100, `Expected 1-100, got ${num}`);
 		results.add(num);
 	}
-	// Com 100 amostras, esperamos alguma variação (probabilidade de todos iguais é astronomicamente baixa)
-	assert.ok(results.size > 1, "generateRandomNumber deve produzir variação");
-	console.log("✓ generateRandomNumber gera inteiros entre 1 e 100");
+	// With 100 samples, we expect some variation (probability of all equal is astronomically low)
+	assert.ok(results.size > 1, "generateRandomNumber must produce variation");
+	console.log("✓ generateRandomNumber generates integers between 1 and 100");
 }

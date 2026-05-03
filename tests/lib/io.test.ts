@@ -20,7 +20,7 @@ export async function run(): Promise<void> {
 	assert.equal(normalizeMarkdown(""), "");
 	assert.equal(normalizeMarkdown("\n\n\n"), "");
 	assert.equal(normalizeMarkdown("content"), "content\n");
-	console.log("✓ normalizeMarkdown normaliza corretamente");
+	console.log("✓ normalizeMarkdown normalizes correctly");
 
 	// writeMarkdownFile
 	await withTempDir(async (dir) => {
@@ -29,9 +29,9 @@ export async function run(): Promise<void> {
 		const content = await fs.readFile(filePath, "utf8");
 		assert.equal(content, "hello world\n");
 	});
-	console.log("✓ writeMarkdownFile persiste conteúdo normalizado");
+	console.log("✓ writeMarkdownFile persists normalized content");
 
-	// writeMarkdownFile rejeita conteúdo vazio
+	// writeMarkdownFile rejects empty content
 	await withTempDir(async (dir) => {
 		const filePath = path.join(dir, "empty.md");
 		await assert.rejects(
@@ -39,7 +39,7 @@ export async function run(): Promise<void> {
 			/Validation failed: content is empty/,
 		);
 	});
-	console.log("✓ writeMarkdownFile rejeita conteúdo vazio");
+	console.log("✓ writeMarkdownFile rejects empty content");
 
 	// writeJsonFile
 	await withTempDir(async (dir) => {
@@ -51,5 +51,5 @@ export async function run(): Promise<void> {
 		assert.equal(parsed.num, 42);
 		assert.ok(content.endsWith("\n"));
 	});
-	console.log("✓ writeJsonFile persiste JSON formatado");
+	console.log("✓ writeJsonFile persists formatted JSON");
 }

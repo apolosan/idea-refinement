@@ -32,17 +32,17 @@ export const WORKING_MESSAGE_LIMIT = 80;
 export function stageDisplayName(stageName: StageName): string {
 	switch (stageName) {
 		case "bootstrap":
-			return "artefatos iniciais";
+			return "initial artifacts";
 		case "develop":
-			return "desenvolvimento";
+			return "development";
 		case "evaluate":
-			return "avaliação";
+			return "evaluation";
 		case "learning":
-			return "aprendizado";
+			return "learning";
 		case "report":
-			return "relatório";
+			return "report";
 		case "checklist":
-			return "checklist de ações";
+			return "action checklist";
 		default:
 			return stageName;
 	}
@@ -59,13 +59,13 @@ export function buildStageStatusMessage(statusMessage: string, detail?: string):
 function workflowStatusLabel(status: WorkflowStatus | "idle"): string {
 	switch (status) {
 		case "running":
-			return "em execução";
+			return "running";
 		case "success":
-			return "concluído";
+			return "completed";
 		case "failed":
-			return "falhou";
+			return "failed";
 		default:
-			return "aguardando";
+			return "waiting";
 	}
 }
 
@@ -158,8 +158,8 @@ function setStageStatus(state: IdeaRefinementMonitorState, stageName: StageName,
 }
 
 function formatStageReference(stageName: StageName | undefined, loopNumber: number | undefined, requestedLoops: number): string {
-	if (!stageName) return "preparando execução";
-	if (stageName === "bootstrap") return "bootstrap · artefatos iniciais";
+	if (!stageName) return "preparing execution";
+	if (stageName === "bootstrap") return "bootstrap · initial artifacts";
 	if (loopNumber !== undefined) return `loop ${loopNumber}/${requestedLoops} · ${stageDisplayName(stageName)}`;
 	return stageDisplayName(stageName);
 }
@@ -341,11 +341,11 @@ export function buildIdeaRefinementWidgetLines(state: IdeaRefinementMonitorState
 	// P0-1: Score always visible — shows value or "--" placeholder regardless of status
 	const scoreSuffix = typeof state.latestScore === "number" ? ` | score ${state.latestScore}/100` : " | score --/100";
 	lines.push(`  status: ${workflowStatusLabel(state.workflowStatus)}${scoreSuffix}`);
-	lines.push(`  dir: ${state.relativeCallDir?.split("/").pop() ?? "preparando..."}`);
+	lines.push(`  dir: ${state.relativeCallDir?.split("/").pop() ?? "preparing..."}`);
 
-	// SECTION 2: Progress (2 lines — A2: barra inline com loops)
+	// SECTION 2: Progress (2 lines — A2: inline bar with loops)
 	lines.push("[ PROGRESS ]");
-	const currentLabel = state.currentLoop !== undefined ? ` (atual: ${state.currentLoop})` : "";
+	const currentLabel = state.currentLoop !== undefined ? ` (current: ${state.currentLoop})` : "";
 	lines.push(`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`);
 
 	// SECTION 3: Pipeline (4 lines)

@@ -33,9 +33,9 @@ export async function run(): Promise<void> {
 		const pi = createMockPi();
 		artifactGuardExtension(pi as any);
 		const handler = pi.getToolCallHandler();
-		assert.ok(handler, "artifact guard deve registrar handler de tool_call");
+		assert.ok(handler, "artifact guard must register tool_call handler");
 
-		// write para caminho protegido durante workflow running
+		// write to protected path during workflow running
 		mkdirSync(path.join(dir, "protected"), { recursive: true });
 		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "running" }), "utf-8");
 		const blockResult = await handler!(
@@ -44,33 +44,33 @@ export async function run(): Promise<void> {
 		);
 		assert.equal(blockResult?.block, true);
 		assert.match(blockResult?.reason, /protected/);
-		console.log("✓ artifact-guard bloqueia escrita durante workflow running");
+		console.log("✓ artifact-guard blocks write during workflow running");
 
-		// write para caminho protegido quando workflow completed
+		// write to protected path when workflow completed
 		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "success" }), "utf-8");
 		const allowResult = await handler!(
 			{ type: "tool_call", toolName: "write", input: { path: path.join(dir, "protected", "file.ts"), content: "x" } },
 			{ cwd: dir },
 		);
-		assert.equal(allowResult, undefined); // não bloqueia
-		console.log("✓ artifact-guard permite escrita quando workflow concluído");
+		assert.equal(allowResult, undefined); // does not block
+		console.log("✓ artifact-guard allows write when workflow completed");
 
-		// edit para caminho protegido durante workflow failed
+		// edit to protected path during workflow failed
 		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "failed" }), "utf-8");
 		const failedAllowResult = await handler!(
 			{ type: "tool_call", toolName: "edit", input: { path: path.join(dir, "protected", "file.ts"), oldText: "a", newText: "b" } },
 			{ cwd: dir },
 		);
 		assert.equal(failedAllowResult, undefined);
-		console.log("✓ artifact-guard permite escrita quando workflow falhou");
+		console.log("✓ artifact-guard allows write when workflow failed");
 
-		// caminho fora das roots protegidas
+		// path outside protected roots
 		const outsideResult = await handler!(
 			{ type: "tool_call", toolName: "write", input: { path: path.join(dir, "outside", "file.ts"), content: "x" } },
 			{ cwd: dir },
 		);
 		assert.equal(outsideResult, undefined);
-		console.log("✓ artifact-guard não interfere em caminhos externos");
+		console.log("✓ artifact-guard does not interfere with external paths");
 
 		// R1 fix: Test that terminal state of one root does NOT unlock another root
 		const rootA = path.join(dir, "rootA");
@@ -97,13 +97,13 @@ export async function run(): Promise<void> {
 			{ cwd: dir },
 		);
 		assert.equal(blockB?.block, true);
-		console.log("✓ artifact-guard R1: terminal state de uma root não libera outra");
+		console.log("✓ artifact-guard R1: terminal state of one root does not unlock another");
 
-		// sem variável de ambiente
+		// no environment variable
 		delete process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS;
 		const pi2 = createMockPi();
 		artifactGuardExtension(pi2 as any);
 		assert.equal(pi2.handlers.length, 0);
-		console.log("✓ artifact-guard não registra handler quando não há roots protegidas");
+		console.log("✓ artifact-guard does not register handler when there are no protected roots");
 	});
 }

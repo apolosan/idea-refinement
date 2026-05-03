@@ -28,13 +28,13 @@ export async function run(): Promise<void> {
 	assert.equal(record.status, "pending");
 	assert.equal(record.logPath, "logs/bootstrap.jsonl");
 	assert.equal(record.startedAt, undefined);
-	console.log("✓ createStageRecord inicializa registro corretamente");
+	console.log("✓ createStageRecord initializes record correctly");
 
 	markStageRunning(record);
 	assert.equal(record.status, "running");
 	assert.ok(record.startedAt);
 	assert.equal(record.completedAt, undefined);
-	console.log("✓ markStageRunning transiciona para running");
+	console.log("✓ markStageRunning transitions to running");
 
 	const result: StageExecutionResult = {
 		text: "ok",
@@ -49,13 +49,13 @@ export async function run(): Promise<void> {
 	assert.ok(record.completedAt);
 	assert.equal(record.model, "test-model");
 	assert.equal(record.usage?.turns, 1);
-	console.log("✓ markStageSuccess registra resultado corretamente");
+	console.log("✓ markStageSuccess records result correctly");
 
 	const failRecord = createStageRecord("develop", "logs/dev.jsonl", "logs/dev.stderr.log");
 	markStageFailure(failRecord, new Error("stage failed"));
 	assert.equal(failRecord.status, "failed");
 	assert.equal(failRecord.errorMessage, "stage failed");
-	console.log("✓ markStageFailure registra erro corretamente");
+	console.log("✓ markStageFailure records error correctly");
 
 	await withTempDir(async (dir) => {
 		const manifest = createInitialManifest({
@@ -96,7 +96,7 @@ export async function run(): Promise<void> {
 		assert.equal(manifest.loops.length, 0);
 		assert.ok(manifest.files.idea.endsWith("IDEA.md"));
 	});
-	console.log("✓ createInitialManifest cria estrutura completa");
+	console.log("✓ createInitialManifest creates complete structure");
 
 	await withTempDir(async (dir) => {
 		const loopEntry = createLoopEntry({
@@ -113,7 +113,7 @@ export async function run(): Promise<void> {
 		assert.equal(loopEntry.stages.learning.status, "pending");
 		assert.ok(loopEntry.responsePath.includes("loop_01/RESPONSE.md"));
 	});
-	console.log("✓ createLoopEntry cria entrada de loop corretamente");
+	console.log("✓ createLoopEntry creates loop entry correctly");
 
 	await withTempDir(async (dir) => {
 		const manifestPath = path.join(dir, "manifest.json");
@@ -148,5 +148,5 @@ export async function run(): Promise<void> {
 		assert.equal(saved.status, "running");
 		assert.equal(saved.schemaVersion, 1);
 	});
-	console.log("✓ saveManifest persiste JSON corretamente");
+	console.log("✓ saveManifest persists JSON correctly");
 }

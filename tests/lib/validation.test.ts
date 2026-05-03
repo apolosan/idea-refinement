@@ -12,7 +12,7 @@ export async function run(): Promise<void> {
 	assert.equal(parsePositiveInteger(""), undefined);
 	assert.equal(parsePositiveInteger("  5  "), 5);
 	assert.equal(parsePositiveInteger("999999999999999999999"), undefined); // > MAX_SAFE_INTEGER
-	console.log("✓ parsePositiveInteger valida inteiros positivos");
+	console.log("✓ parsePositiveInteger validates positive integers");
 
 	assert.equal(determineDirectivePolicy(1), "OPTIMIZATION");
 	assert.equal(determineDirectivePolicy(80), "OPTIMIZATION");
@@ -22,13 +22,13 @@ export async function run(): Promise<void> {
 	assert.throws(() => determineDirectivePolicy(101), /Invalid random number/);
 	assert.throws(() => determineDirectivePolicy(-5), /Invalid random number/);
 	assert.throws(() => determineDirectivePolicy(3.5), /Invalid random number/);
-	console.log("✓ determineDirectivePolicy aplica a regra Pareto corretamente");
+	console.log("✓ determineDirectivePolicy applies Pareto rule correctly");
 
 	assert.equal(extractOverallScore("Overall score: 93/100"), 93);
 	assert.equal(extractOverallScore("overall score: 7 / 100"), 7);
-	assert.equal(extractOverallScore("sem score"), undefined);
+	assert.equal(extractOverallScore("no score"), undefined);
 	assert.equal(extractOverallScore("Overall score: 0/100"), undefined); // < 1
 	assert.equal(extractOverallScore("Overall score: 101/100"), undefined); // > 100
 	assert.equal(extractOverallScore("Overall score: 050/100"), 50); // leading zeros
-	console.log("✓ extractOverallScore encontra o score total corretamente");
+	console.log("✓ extractOverallScore finds total score correctly");
 }

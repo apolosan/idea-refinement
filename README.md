@@ -1,16 +1,22 @@
 # Idea Refinement Extension
 
-Extensão para o [Pi Coding Agent](https://pi.dev) que executa, por código e em ordem forçada, um workflow iterativo de refinamento de ideias.
+A [Pi Coding Agent](https://pi.dev) extension that enforces, by code and in strict sequence, an iterative idea-refinement workflow.
 
-## Instalação
+## What It Is
 
-### Via Pi (recomendado)
+Think of it as **autoresearch** — inspired by the concept Andrej Karpathy popularized — but without the GPU cluster. Instead of training a model, the extension trains the *agent itself* while it analyzes an idea proposal or problem solution. Each loop forces the agent to develop, critique, and learn from its own output, progressively sharpening its understanding of the problem space.
+
+While it is designed to refine raw ideas into actionable plans, it works just as powerfully for **intelligent and convincing problem solving**: feed it a bug, an architectural tension, a product decision, or a research question, and the workflow will dissect it, propose alternatives, evaluate them with epistemic rigor, and deliver a prioritized checklist of next steps.
+
+## Installation
+
+### Via Pi (recommended)
 
 ```bash
 pi install npm:@apolosan/idea-refinement
 ```
 
-Ou para instalação local no projeto:
+Or for local project installation:
 
 ```bash
 pi install -l npm:@apolosan/idea-refinement
@@ -22,7 +28,7 @@ pi install -l npm:@apolosan/idea-refinement
 npm install -g @apolosan/idea-refinement
 ```
 
-E depois adicione ao seu `settings.json` do Pi:
+Then add it to your Pi `settings.json`:
 
 ```json
 {
@@ -30,64 +36,66 @@ E depois adicione ao seu `settings.json` do Pi:
 }
 ```
 
-## Pré-requisitos
+## Prerequisites
 
-- **Node.js ≥ 22** (usa `--experimental-strip-types`)
+- **Node.js ≥ 22** (uses `--experimental-strip-types`)
 
-## O que ela faz
+## What It Does
 
-Com o comando `/idea-refine`, a extensão:
+With the `/idea-refine` command, the extension:
 
-1. recebe a ideia do usuário;
-2. pergunta quantos loops devem ser executados;
-3. gera os artefatos iniciais:
+1. captures your idea;
+2. asks how many development loops to run;
+3. generates the initial artifacts:
    - `DIRECTIVE.md`
    - `LEARNING.md`
    - `CRITERIA.md`
    - `DIAGNOSIS.md`
    - `METRICS.md`
    - `BACKLOG.md`
-4. executa, para cada loop:
-   - desenvolvimento da ideia → `RESPONSE.md`
-   - avaliação crítica → `FEEDBACK.md`
-   - atualização cumulativa de aprendizado → `LEARNING.md`
-5. salva tudo em um diretório isolado por chamada;
-6. exibe, em tempo real, o andamento do workflow de forma visível ao usuário:
-   - notificações no console/chat do Pi para início, etapas, conclusão de loops e falhas;
-   - loop atual e total de loops;
-   - barra de progresso dos loops;
-   - etapa atual do workflow;
-   - ferramenta em execução.
+4. executes, for each loop:
+   - idea development → `RESPONSE.md`
+   - critical evaluation → `FEEDBACK.md`
+   - cumulative learning update → `LEARNING.md`
+5. stores everything in an isolated directory per invocation;
+6. displays real-time workflow progress through multiple persistent UI channels:
+   - console/chat notifications for start, stage transitions, loop completion, and failures;
+   - current loop and total loops;
+   - textual loop progress bar;
+   - current workflow stage;
+   - active tool being executed.
 
-## Como usar
+## How to Use
 
-No Pi, execute:
+In Pi, run:
 
 ```text
 /idea-refine
 ```
 
-Ou, para uma ideia curta:
+Or, for a short idea:
 
 ```text
-/idea-refine Quero validar uma plataforma para entrevistas técnicas assistidas por IA.
+/idea-refine I want to validate a platform for AI-assisted technical interviews.
 ```
 
-Depois disso, a extensão pedirá a quantidade de loops.
+After that, the extension will ask for the number of loops.
 
-## Monitor em tempo real
+## Real-Time Monitor
 
-Durante a execução, a extensão:
+During execution, the extension:
 
-- publica eventos importantes no console/chat do Pi (`workflow_started`, início/fim de etapas, conclusão de loop, falhas);
-- atualiza `status` resumido no rodapé/working message;
-- mantém um widget persistente com checklist de bootstrap, desenvolvimento, avaliação e aprendizado;
-- exibe `ferramenta atual` em uso pelo subprocesso invocado;
-- mostra uma barra de progresso textual dos loops.
+- publishes important events to the Pi console/chat (`workflow_started`, stage start/end, loop completion, failures);
+- updates a summarized `status` in the footer/working message;
+- keeps a persistent widget with a checklist of bootstrap, development, evaluation, and learning stages;
+- displays the `current tool` in use by the invoked subprocess;
+- shows a textual progress bar of completed loops.
 
-## Diretórios e artefatos
+These messages are emitted through distinct Pi UI channels (`setStatus`, `setWidget`, `setWorkingMessage`, and `notify`) so that status information remains visible and is not pruned by the agent interface.
 
-Cada execução cria um diretório exclusivo:
+## Directories and Artifacts
+
+Each run creates an exclusive directory:
 
 ```text
 docs/idea_refinement/artifacts_call_01/
@@ -95,7 +103,7 @@ docs/idea_refinement/artifacts_call_02/
 ...
 ```
 
-Estrutura gerada:
+Generated structure:
 
 ```text
 docs/idea_refinement/artifacts_call_NN/
@@ -106,12 +114,12 @@ docs/idea_refinement/artifacts_call_NN/
 ├── DIAGNOSIS.md
 ├── METRICS.md
 ├── BACKLOG.md
-├── RESPONSE.md          # versão mais recente
-├── FEEDBACK.md          # versão mais recente
-├── REPORT.md            # relatório consolidado final
-├── CHECKLIST.md         # checklist de ações acionáveis
-├── validator-check-output.md  # resultado da validação epistêmica
-├── run.json             # manifesto estruturado da execução
+├── RESPONSE.md          # latest version
+├── FEEDBACK.md          # latest version
+├── REPORT.md            # final consolidated report
+├── CHECKLIST.md         # actionable checklist
+├── validator-check-output.md  # epistemic validation result
+├── run.json             # structured execution manifest
 ├── logs/
 │   ├── bootstrap.jsonl
 │   ├── loop_01_develop.jsonl
@@ -126,66 +134,66 @@ docs/idea_refinement/artifacts_call_NN/
         └── ...
 ```
 
-## Como a ordem é forçada
+## How Order Is Enforced
 
-A extensão não depende do agente atual para orquestrar o processo.
+The extension does not rely on the current agent to orchestrate the process.
 
-Ela própria:
+It itself:
 
-- gera números aleatórios não-determinísticos via Mersenne Twister + entropia criptográfica para guiar o workflow;
-- dispara subprocessos do próprio `pi` em sequência;
-- injeta prompts de sistema específicos por etapa;
-- captura o texto final de cada subprocesso;
-- grava os artefatos por código;
-- atualiza `run.json` durante toda a execução.
+- generates non-deterministic random numbers via Mersenne Twister + cryptographic entropy to guide the workflow;
+- spawns its own `pi` subprocesses in sequence;
+- injects stage-specific system prompts;
+- captures the final text of each subprocess;
+- writes artifacts by code;
+- updates `run.json` throughout execution.
 
-## Variável de ambiente
+## Environment Variable
 
 ### `PI_IDEA_REFINEMENT_PROTECTED_ROOTS`
 
-Esta variável de ambiente é usada internamente pela extensão para proteger os diretórios de artefatos contra escrita durante a execução do workflow. O `artifact-guard.ts` bloqueia operações de `write` e `edit` em caminhos protegidos até que o workflow atinja um estado terminal (`success` ou `failed`).
+This environment variable is used internally by the extension to protect artifact directories from writes during workflow execution. The `artifact-guard.ts` blocks `write` and `edit` operations on protected paths until the workflow reaches a terminal state (`success` or `failed`).
 
-**Não é necessário configurar manualmente** — a extensão a define automaticamente ao iniciar cada subprocesso.
+**No manual configuration is required** — the extension sets it automatically when starting each subprocess.
 
-## Salvaguardas implementadas
+## Implemented Safeguards
 
-- `DIRECTIVE.md` é criada uma única vez e nunca mais é regravada.
-- `DIAGNOSIS.md`, `METRICS.md` e `BACKLOG.md` tornam o refinement mais observável, comparável e auditável.
-- Os subprocessos de cada etapa recebem uma extensão auxiliar (`artifact-guard.ts`) que bloqueia `write` e `edit` sobre o diretório de artefatos.
-- O conteúdo final dos artefatos é persistido apenas pela extensão principal.
-- Cada loop mantém snapshots próprios em `loops/loop_NN/`.
+- `DIRECTIVE.md` is created once and never overwritten.
+- `DIAGNOSIS.md`, `METRICS.md`, and `BACKLOG.md` make refinement more observable, comparable, and auditable.
+- Each stage subprocess receives an auxiliary extension (`artifact-guard.ts`) that blocks `write` and `edit` on the artifact directory.
+- Final artifact content is persisted only by the main extension.
+- Each loop keeps its own snapshots in `loops/loop_NN/`.
 
-## Decisões de implementação
+## Implementation Decisions
 
-- O modelo ativo da sessão atual é reutilizado em todas as etapas.
-- O nível de thinking ativo da sessão também é propagado aos subprocessos do workflow.
-- O monitor em tempo real é alimentado por eventos estruturados (`message_update`, `tool_execution_start`, `tool_execution_end`) emitidos por cada subprocesso `pi --mode json`.
-- O número aleatório inicial define apenas a política principal ativa da `DIRECTIVE.md`:
+- The active session model is reused across all stages.
+- The active session thinking level is also propagated to workflow subprocesses.
+- The real-time monitor is fed by structured events (`message_update`, `tool_execution_start`, `tool_execution_end`) emitted by each `pi --mode json` subprocess.
+- The initial random number only defines the primary active policy in `DIRECTIVE.md`:
   - `1-80` → `OPTIMIZATION`
   - `81-100` → `CREATIVITY/EXPLORATION`
-- A `DIRECTIVE.md` sempre inclui ambas as políticas (`OPTIMIZATION` e `CREATIVITY/EXPLORATION`); o sorteio só define qual delas fica marcada em `Selected Policy`.
-- O número aleatório de cada loop é encaminhado ao agente de desenvolvimento como semente contextual, sem poder sobrescrever a diretiva.
-- A extensão foi mantida modular para facilitar manutenção e testes.
+- `DIRECTIVE.md` always includes both policies (`OPTIMIZATION` and `CREATIVITY/EXPLORATION`); the draw only sets which one is marked in `Selected Policy`.
+- Each loop's random number is forwarded to the development agent as a contextual seed, without the ability to overwrite the directive.
+- The extension is kept modular to facilitate maintenance and testing.
 
-## Testes
+## Tests
 
-Rode os testes locais com Node 22+:
+Run local tests with Node 22+:
 
 ```bash
 node --experimental-strip-types tests/run-tests.ts
 ```
 
-Os testes cobrem:
+Tests cover:
 
-- parsing de número de loops;
-- detecção do próximo `artifacts_call_NN`;
-- parsing dos marcadores dos artefatos iniciais e da atualização de `LEARNING.md` + `BACKLOG.md`;
-- extração do `Overall score`;
-- proteção de paths de artefatos;
-- propagação do nível de thinking para os subprocessos;
-- monitor de execução e thinking em tempo real;
-- smoke import da extensão principal.
+- loop count parsing;
+- next `artifacts_call_NN` detection;
+- initial artifact marker parsing and `LEARNING.md` + `BACKLOG.md` update parsing;
+- `Overall score` extraction;
+- artifact path protection;
+- thinking level propagation to subprocesses;
+- execution and thinking monitor in real time;
+- smoke import of the main extension.
 
-## Licença
+## License
 
 MIT

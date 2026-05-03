@@ -80,7 +80,7 @@ function mapPiStageEventToWorkflowEvent(options: {
 				completedLoops,
 				stageName,
 				loopNumber,
-				message: `Ferramenta ${event.toolName} iniciada`,
+				message: `Tool ${event.toolName} started`,
 				toolName: event.toolName,
 			};
 		case "tool_execution_end":
@@ -91,7 +91,7 @@ function mapPiStageEventToWorkflowEvent(options: {
 				completedLoops,
 				stageName,
 				loopNumber,
-				message: event.isError ? `Ferramenta ${event.toolName} retornou erro` : `Ferramenta ${event.toolName} concluída`,
+				message: event.isError ? `Tool ${event.toolName} returned an error` : `Tool ${event.toolName} completed`,
 				toolName: event.toolName,
 				isError: event.isError,
 			};
@@ -200,7 +200,7 @@ async function runManagedStage(options: {
 			relativeCallDir,
 			requestedLoops,
 			completedLoops,
-			message: `Etapa concluída: ${stageDisplayName(stageName)}${loopNumber ? ` (loop ${loopNumber}/${requestedLoops})` : ""}`,
+			message: `Stage completed: ${stageDisplayName(stageName)}${loopNumber ? ` (loop ${loopNumber}/${requestedLoops})` : ""}`,
 			stageName,
 			stageStatus: record.status,
 			loopNumber,
@@ -246,7 +246,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 		relativeCallDir,
 		requestedLoops: loops,
 		completedLoops: 0,
-		message: `Workflow iniciado em ${relativeCallDir}`,
+		message: `Workflow started in ${relativeCallDir}`,
 	});
 
 	let latestScore: number | undefined;
@@ -279,18 +279,27 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 			manifestPath: workspace.rootFiles.manifest,
 			onStatus,
 			onEvent,
-			statusMessage: `Gerando artefatos iniciais em ${relativeCallDir}`,
+			statusMessage: `Generating initial artifacts in ${relativeCallDir}`,
 			invocation,
 		});
 
-		const sections = extractMarkedSections(bootstrapResult.text, [
-			"DIRECTIVE.md",
-			"LEARNING.md",
-			"CRITERIA.md",
-			"DIAGNOSIS.md",
-			"METRICS.md",
-			"BACKLOG.md",
-		]);
+		let sections: Record<string, string>;
+		try {
+			sections = extractMarkedSections(bootstrapResult.text, [
+				"DIRECTIVE.md",
+				"LEARNING.md",
+				"CRITERIA.md",
+				"DIAGNOSIS.md",
+				"METRICS.md",
+				"BACKLOG.md",
+			]);
+		} catch (parseError) {
+			const rawPath = path.join(workspace.callDir, "bootstrap-raw.md");
+			await writeMarkdownFile(rawPath, bootstrapResult.text);
+			throw new Error(
+				`Failed to extract bootstrap sections; raw text preserved at ${rawPath}. Cause: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+			);
+		}
 		await writeMarkdownFile(workspace.rootFiles.directive, sections["DIRECTIVE.md"]);
 		await writeMarkdownFile(workspace.rootFiles.learning, sections["LEARNING.md"]);
 		await writeMarkdownFile(workspace.rootFiles.criteria, sections["CRITERIA.md"]);
@@ -312,12 +321,9 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 			manifest.loops.push(loopEntry);
 			await saveManifest(workspace.rootFiles.manifest, manifest);
 
-			// Snapshot C7: captura antes do develop para detectar alterações materiais
+			// Snapshot C7: capture before develop to detect material changes
 			// C2 fix: Snapshot C7 captures project source (cwd), not extension source
 			const snapshotBefore = await takeSnapshot(cwd);
-
-			// C4 fix: Track stage start incrementally before execution
-			loopEntry.stages.develop.startedAt = new Date().toISOString();
 
 			const developResult = await runManagedStage({
 				cwd,
@@ -342,13 +348,13 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
 				onEvent,
-				statusMessage: `Loop ${loopNumber}/${loops}: desenvolvendo RESPONSE.md`,
+				statusMessage: `Loop ${loopNumber}/${loops}: developing RESPONSE.md`,
 				invocation,
 			});
 			await writeMarkdownFile(workspace.rootFiles.response, developResult.text);
 			await writeMarkdownFile(path.join(loopDir, "RESPONSE.md"), developResult.text);
 
-			// Snapshot C7: compara antes/depois e armazena diff no loopEntry
+			// Snapshot C7: compare before/after and store diff in loopEntry
 			// C2 fix: Snapshot C7 after develop also uses cwd (project root)
 			const snapshotAfter = await takeSnapshot(cwd);
 			const c7Diff: SnapshotDiff = diffSnapshots(snapshotBefore, snapshotAfter);
@@ -358,12 +364,9 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				changedFiles: c7Diff.changed.length + c7Diff.added.length,
 			};
 
-			// C4 fix: Track stage completion incrementally after execution
-			loopEntry.stages.develop.completedAt = new Date().toISOString();
-
-			// Se C7=0 (sem alterações materiais), emite notificação WARNING
+			// If C7=0 (no material changes), emit WARNING notification
 			if (!c7Diff.hasChanges) {
-				const warningMsg = `⚠ Loop ${loopNumber}/${loops}: C7=0 — nenhuma alteração material no código fonte após develop. Isso indica pseudo-execução.`;
+				const warningMsg = `⚠ Loop ${loopNumber}/${loops}: C7=0 — no material changes to source code after develop. This indicates pseudo-execution.`;
 				onStatus?.(warningMsg);
 				emitWorkflowEvent(onEvent, {
 					type: "stage_progress",
@@ -376,9 +379,6 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 					loopNumber,
 				});
 			}
-
-			// C4 fix: Track stage start incrementally before execution
-			loopEntry.stages.evaluate.startedAt = new Date().toISOString();
 
 			const evaluateResult = await runManagedStage({
 				cwd,
@@ -402,19 +402,14 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
 				onEvent,
-				statusMessage: `Loop ${loopNumber}/${loops}: avaliando FEEDBACK.md`,
+				statusMessage: `Loop ${loopNumber}/${loops}: evaluating FEEDBACK.md`,
 				invocation,
 			});
 			await writeMarkdownFile(workspace.rootFiles.feedback, evaluateResult.text);
 			await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), evaluateResult.text);
 
-			// C4 fix: Track stage completion incrementally after execution
-			loopEntry.stages.evaluate.completedAt = new Date().toISOString();
 			loopEntry.score = extractOverallScore(evaluateResult.text);
 			if (typeof loopEntry.score === "number") latestScore = loopEntry.score;
-
-			// C4 fix: Track stage start incrementally before execution
-			loopEntry.stages.learning.startedAt = new Date().toISOString();
 
 			const learningResult = await runManagedStage({
 				cwd,
@@ -438,7 +433,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
 				onEvent,
-				statusMessage: `Loop ${loopNumber}/${loops}: atualizando LEARNING.md`,
+				statusMessage: `Loop ${loopNumber}/${loops}: updating LEARNING.md`,
 				invocation,
 			});
 			const learningSections = extractMarkedSections(learningResult.text, ["LEARNING.md", "BACKLOG.md"]);
@@ -447,8 +442,6 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 			await writeMarkdownFile(path.join(loopDir, "LEARNING.md"), learningSections["LEARNING.md"]);
 			await writeMarkdownFile(path.join(loopDir, "BACKLOG.md"), learningSections["BACKLOG.md"]);
 
-			// C4 fix: Track last stage completion and finalize loop entry incrementally
-			loopEntry.stages.learning.completedAt = new Date().toISOString();
 			loopEntry.completedAt = new Date().toISOString();
 			manifest.completedLoops = loopNumber;
 			await saveManifest(workspace.rootFiles.manifest, manifest);
@@ -457,7 +450,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				relativeCallDir,
 				requestedLoops: loops,
 				completedLoops: manifest.completedLoops,
-				message: `Loop ${loopNumber}/${loops} concluído${typeof loopEntry.score === "number" ? ` • score ${loopEntry.score}/100` : ""}`,
+				message: `Loop ${loopNumber}/${loops} completed${typeof loopEntry.score === "number" ? ` • score ${loopEntry.score}/100` : ""}`,
 				loopNumber,
 				score: loopEntry.score,
 			});
@@ -488,7 +481,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 			manifestPath: workspace.rootFiles.manifest,
 			onStatus,
 			onEvent,
-			statusMessage: `Consolidando relatório final: REPORT.md`,
+			statusMessage: `Consolidating final report: REPORT.md`,
 			invocation,
 		});
 		await writeMarkdownFile(workspace.rootFiles.report, reportResult.text);
@@ -515,7 +508,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 			manifestPath: workspace.rootFiles.manifest,
 			onStatus,
 			onEvent,
-			statusMessage: `Gerando checklist de ações: CHECKLIST.md`,
+			statusMessage: `Generating action checklist: CHECKLIST.md`,
 			invocation,
 		});
 		await writeMarkdownFile(workspace.rootFiles.checklist, checklistResult.text);
@@ -524,13 +517,13 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 		manifest.status = "success";
 		manifest.completedAt = new Date().toISOString();
 		await saveManifest(workspace.rootFiles.manifest, manifest);
-		onStatus?.(`Workflow concluído em ${relativeCallDir}`);
+		onStatus?.(`Workflow completed in ${relativeCallDir}`);
 		emitWorkflowEvent(onEvent, {
 			type: "workflow_completed",
 			relativeCallDir,
 			requestedLoops: loops,
 			completedLoops: manifest.completedLoops,
-			message: `Workflow concluído em ${relativeCallDir}`,
+			message: `Workflow completed in ${relativeCallDir}`,
 			score: latestScore,
 		});
 
@@ -545,13 +538,13 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 		manifest.completedAt = new Date().toISOString();
 		manifest.lastError = error instanceof Error ? error.message : String(error);
 		await saveManifest(workspace.rootFiles.manifest, manifest);
-		onStatus?.(`Falha no workflow: ${manifest.lastError}`);
+		onStatus?.(`Workflow failed: ${manifest.lastError}`);
 		emitWorkflowEvent(onEvent, {
 			type: "workflow_failed",
 			relativeCallDir,
 			requestedLoops: loops,
 			completedLoops: manifest.completedLoops,
-			message: `Falha no workflow: ${manifest.lastError}`,
+			message: `Workflow failed: ${manifest.lastError}`,
 			isError: true,
 		});
 		throw error;

@@ -31,46 +31,46 @@ async function createFakePiScript(dir: string): Promise<{ command: string; args:
 		`}`,
 		`function tag(n, c) { return "<<<BEGIN FILE: " + n + ">>>\\n" + c + "\\n<<<END FILE: " + n + ">>>"; }`,
 		`let r;`,
-		`if (sp.includes("artefatos iniciais")) {`,
+		`if (sp.includes("initial artifacts")) {`,
 		`  r = [tag("DIRECTIVE.md","# Dir\\nSelected Policy: OPTIMIZATION\\n## OPT\\nFocus on measurable improvement.\\n## CREAT\\nExplore novel approaches."),`,
 		`       tag("LEARNING.md","# Learn\\n[HYP] First entry."),`,
 		`       tag("CRITERIA.md","# Crit\\n## V\\nBefore/after with metrics."),`,
-		`       tag("DIAGNOSIS.md","# Diag\\n[FATO] Initial assessment.\\n[INF] Key inference.\\n## Current vs Proposed\\nCurrent: unvalidated. Proposed: structured."),`,
+		`       tag("DIAGNOSIS.md","# Diag\\n[FACT] Initial assessment.\\n[INF] Key inference.\\n## Current vs Proposed\\nCurrent: unvalidated. Proposed: structured."),`,
 		`       tag("METRICS.md","# Met\\n## M1\\n- Scale: 1-10\\n- Baseline: 3/10\\n- Target: 7/10"),`,
 		`       tag("BACKLOG.md","# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|pend|Validate|\\n|B2|P1|pend|Explore|")`,
 		`  ].join("\\n");`,
-		`} else if (sp.includes("desenvolvimento iterativo da ideia")) {`,
-		`  r = ["# Response","## Enquadramento do loop","Analyzing focus.","## Diagnóstico focal deste loop",`,
-		`       "[FATO] Evidence: src/index.ts.","[FATO] More: lib/workflow.ts.","## Perguntas operacionais e pesquisa externa aplicada","What to measure?",`,
-		`       "## Matriz mínima de alternativas","|Alt|P|M|B|C|R|","|---|---|---|---|---|---|","|A|X|Y|Z|L|N|","|B|X2|Y2|Z2|M|S|","|C|X3|Y3|Z3|H|Ma|",`,
-		`       "## Estado atual vs. estado proposto","antes: baseline 5/10, depois: target 7/10 (40% improvement)",`,
-		`       "## Protocolo de experimento","Run tests.","## Decisão desta iteração","Manter A. Ajustar B.",`,
-		`       "## Descartes explícitos desta iteração","Descartar C.","## Próximos focos","Testar depois.",`,
-		`       "[INFERÊNCIA] Bottleneck identified.","[RISCO] Over-engineering risk."`,
+		`} else if (sp.includes("iterative idea development")) {`,
+		`  r = ["# Response","## Loop framing","Analyzing focus.","## Focused loop diagnosis",`,
+		`       "[FACT] Evidence: src/index.ts.","[FACT] More: lib/workflow.ts.","## Operational questions and applied external research","What to measure?",`,
+		`       "## Minimum alternatives matrix","|Alt|P|M|B|C|R|","|---|---|---|---|---|---|","|A|X|Y|Z|L|N|","|B|X2|Y2|Z2|M|S|","|C|X3|Y3|Z3|H|Ma|",`,
+		`       "## Current state vs. proposed state","before: baseline 5/10, after: target 7/10 (40% improvement)",`,
+		`       "## Experiment protocol","Run tests.","## Iteration decision","Keep A. Adjust B.",`,
+		`       "## Explicit discards of this iteration","Discard C.","## Next focuses","Test later.",`,
+		`       "[INFERENCE] Bottleneck identified.","[RISK] Over-engineering risk."`,
 		`  ].join("\\n");`,
-		`} else if (sp.includes("avaliador da etapa") || sp.includes("Scoreboard")) {`,
-		`  r = ["# Feedback","## Veredito geral","Solid.","## Evidências que sustentam o veredito","[FATO] Template.",`,
-		`       "## Avaliação da comparabilidade antes/depois","Before: x. After: y.","## Auditoria epistêmica","Tags ok.",`,
-		`       "## Avaliação critério a critério","Pass.","## Decisão final da iteração","Manter.",`,
-		`       "## Recomendações objetivas para a próxima iteração","Evidence.","## Scoreboard",`,
+		`} else if (sp.includes("critical evaluation") || sp.includes("Scoreboard")) {`,
+		`  r = ["# Feedback","## Overall verdict","Solid.","## Evidence supporting the verdict","[FACT] Template.",`,
+		`       "## Before/after comparability evaluation","Before: x. After: y.","## Epistemic audit","Tags ok.",`,
+		`       "## Criterion-by-criterion evaluation","Pass.","## Final iteration decision","Keep.",`,
+		`       "## Objective recommendations for the next iteration","Evidence.","## Scoreboard",`,
 		`       "Process Rigor score: 72/100","Material Result score: 68/100","Overall score: 70/100"`,
 		`  ].join("\\n");`,
-		`} else if (sp.includes("curador da base de aprendizado")) {`,
-		`  r = [tag("LEARNING.md","# Learn\\n[HYP] Works.\\n[DECISÃO] Maintain."),`,
+		`} else if (sp.includes("curator agent")) {`,
+		`  r = [tag("LEARNING.md","# Learn\\n[HYP] Works.\\n[DECISION] Maintain."),`,
 		`       tag("BACKLOG.md","# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|done|X|\\n|B2|P1|pend|Y|\\n|B3|P2|new|Z|")`,
 		`  ].join("\\n");`,
-		`} else if (sp.includes("consolidar todo o processo") || sp.includes("Relatório de Investigação")) {`,
-		`  r = ["# Relatório de Investigação","## Resumo executivo","Done.","## Contexto e objeto da investigação","Analyzed.",`,
-		`       "## Metodologia aplicada","Iterative.","## Descobertas principais","[FATO] Findings.",`,
-		`       "## Evolução dos scores","70/100.","## Decisões firmes e hipóteses ativas","[DECISÃO] OK.",`,
-		`       "## Riscos identificados e mitigações","[RISCO] Complex.","## Recomendações finais","Proceed.",`,
-		`       "## Referências cruzadas","All."`,
+		`} else if (sp.includes("consolidating") || sp.includes("Investigation Report")) {`,
+		`  r = ["# Investigation Report","## Executive summary","Done.","## Context and investigation object","Analyzed.",`,
+		`       "## Applied methodology","Iterative.","## Main findings","[FACT] Findings.",`,
+		`       "## Score evolution","70/100.","## Firm decisions and active hypotheses","[DECISION] OK.",`,
+		`       "## Identified risks and mitigations","[RISK] Complex.","## Final recommendations","Proceed.",`,
+		`       "## Cross-references","All."`,
 		`  ].join("\\n");`,
-		`} else if (sp.includes("lista de ações") || sp.includes("Checklist de Ações")) {`,
-		`  r = ["# Checklist de Ações","## Ações imediatas (P0)","- Validate [DECISÃO]",`,
-		`       "## Ações de curto prazo (P1)","- Implement","## Ações de médio prazo (P2)","- Monitor",`,
-		`       "## Ações de longo prazo (P3)","- Scale","## Dependências entre ações","P0->P1.",`,
-		`       "## Critérios de aceite por ação","Measurable."`,
+		`} else if (sp.includes("action checklist") || sp.includes("Action Checklist")) {`,
+		`  r = ["# Action Checklist","## Immediate actions (P0)","- Validate [DECISION]",`,
+		`       "## Short-term actions (P1)","- Implement","## Medium-term actions (P2)","- Monitor",`,
+		`       "## Long-term actions (P3)","- Scale","## Dependencies between actions","P0->P1.",`,
+		`       "## Acceptance criteria per action","Measurable."`,
 		`  ].join("\\n");`,
 		`} else {`,
 		`  r = "DEFAULT len=" + sp.length;`,
@@ -110,17 +110,36 @@ export async function run(): Promise<void> {
 		assert.equal(result.manifest.completedLoops, 1);
 		assert.ok(result.manifest.bootstrap.status === "success" || result.manifest.bootstrap.status === "failed");
 
-		// Verifica arquivos criados (manifest stores relative paths, resolve against dir)
+		// Verify created files (manifest stores relative paths, resolve against dir)
 		for (const filePath of Object.values(result.manifest.files)) {
 			await fs.access(path.resolve(dir, filePath));
 		}
 		await fs.access(path.join(result.callDir, "run.json"));
 
+		// X1 fix: minimum content assertions for bootstrap artifacts
+		const directive = await fs.readFile(path.resolve(dir, result.manifest.files.directive), "utf-8");
+		assert.ok(directive.includes("Selected Policy:"), "DIRECTIVE.md must contain 'Selected Policy:'");
+
+		const backlog = await fs.readFile(path.resolve(dir, result.manifest.files.backlog), "utf-8");
+		assert.ok(/P[0-3]/.test(backlog), "BACKLOG.md must contain at least one priority P0-P3");
+
+		const learning = await fs.readFile(path.resolve(dir, result.manifest.files.learning), "utf-8");
+		assert.ok(/\[HYP\]|\[FACT\]|\[DECISION\]|\[INFERENCE\]|\[RISK\]/.test(learning), "LEARNING.md must contain an epistemic tag");
+
+		const diagnosis = await fs.readFile(path.resolve(dir, result.manifest.files.diagnosis), "utf-8");
+		assert.ok(diagnosis.includes("[FACT]"), "DIAGNOSIS.md must contain at least one [FACT]");
+
+		const metrics = await fs.readFile(path.resolve(dir, result.manifest.files.metrics), "utf-8");
+		assert.ok(metrics.includes("Baseline") || metrics.includes("## M"), "METRICS.md must contain Baseline or metric section");
+
+		const criteria = await fs.readFile(path.resolve(dir, result.manifest.files.criteria), "utf-8");
+		assert.ok(criteria.includes("## V") || criteria.includes("Vision"), "CRITERIA.md must contain validation vision");
+
 		// C1 fix: Verify report and checklist stages are properly tracked
 		assert.equal(result.manifest.report.status, "success");
 		assert.equal(result.manifest.checklist.status, "success");
 
-		// Verifica estrutura do loop
+		// Verify loop structure
 		assert.equal(result.manifest.loops.length, 1);
 		const loop = result.manifest.loops[0];
 		assert.equal(loop.loopNumber, 1);
@@ -129,9 +148,9 @@ export async function run(): Promise<void> {
 		assert.ok(loop.stages.evaluate.status === "success" || loop.stages.evaluate.status === "failed");
 		assert.ok(loop.stages.learning.status === "success" || loop.stages.learning.status === "failed");
 
-		// Verifica eventos
+		// Verify events
 		assert.ok(events.includes("workflow_started"));
 		assert.ok(events.includes("workflow_completed") || events.includes("workflow_failed"));
-		console.log("✓ runIdeaRefinementWorkflow executa workflow completo com 1 loop");
+		console.log("✓ runIdeaRefinementWorkflow executes complete workflow with 1 loop");
 	});
 }

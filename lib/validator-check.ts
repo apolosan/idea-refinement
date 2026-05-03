@@ -51,7 +51,7 @@ function validateExtended(text: string): { checks: Check[]; score: number; maxSc
 	// C3: At least 2 alternatives in matrix
 	const altLines = text.split("\n").filter((l) => l.startsWith("|") && l.includes("|"));
 	const hasAlt = altLines.length >= 4;
-	checks.push({ id: "C3", name: "At least 2 alternatives in matrix", passed: hasAlt, detail: `${Math.floor((altLines.length - 2) / 2)} alternativas` });
+	checks.push({ id: "C3", name: "At least 2 alternatives in matrix", passed: hasAlt, detail: `${Math.floor((altLines.length - 2) / 2)} alternatives` });
 	if (hasAlt) score += 15;
 
 	// C4: Epistemic tags (unified constant: 3 minimum)
@@ -70,23 +70,23 @@ function validateExtended(text: string): { checks: Check[]; score: number; maxSc
 	checks.push({ id: "C5", name: "At least 2 decision terms", passed: hasDecisions, detail: `${decisionCount} terms` });
 	if (hasDecisions) score += 10;
 
-	// C6: [FATO] with file references
-	const fatoCount = (text.match(/\[FATO\]/g) || []).length;
-	const fatoRefs = text.match(/\[FATO\].*?[.:]\s*[^\s]+\.(ts|md|json)/g);
-	const c6Passed = fatoCount === 0 || (fatoRefs !== null && fatoRefs.length >= Math.ceil(fatoCount * 0.5));
-	checks.push({ id: "C6", name: "[FATO] with file reference (>50%)", passed: c6Passed, detail: `${fatoRefs?.length ?? 0}/${fatoCount} refs` });
+	// C6: [FACT] with file references
+	const factCount = (text.match(/\[FACT\]/g) || []).length;
+	const factRefs = text.match(/\[FACT\].*?[.:]\s*[^\s]+\.(ts|md|json)/g);
+	const c6Passed = factCount === 0 || (factRefs !== null && factRefs.length >= Math.ceil(factCount * 0.5));
+	checks.push({ id: "C6", name: "[FACT] with file reference (>50%)", passed: c6Passed, detail: `${factRefs?.length ?? 0}/${factCount} refs` });
 	if (c6Passed) score += 10;
 
-	// C7: Contains [RISCO] or [INFERÊNCIA]
-	const hasRisk = text.includes("[RISCO]");
-	const hasInference = text.includes("[INFERÊNCIA]");
+	// C7: Contains [RISK] or [INFERENCE]
+	const hasRisk = text.includes("[RISK]");
+	const hasInference = text.includes("[INFERENCE]");
 	const c7Passed = hasRisk || hasInference;
-	checks.push({ id: "C7", name: "Contains [RISCO] or [INFERÊNCIA]", passed: c7Passed, detail: hasRisk ? "[RISCO] found" : hasInference ? "[INFERÊNCIA] found" : "none" });
+	checks.push({ id: "C7", name: "Contains [RISK] or [INFERENCE]", passed: c7Passed, detail: hasRisk ? "[RISK] found" : hasInference ? "[INFERENCE] found" : "none" });
 	if (c7Passed) score += 5;
 
 	// C8: Before/after with numbers
-	const hasMetricDelta = /\bantes?\b.*\bdepois\b|\bdepois\b.*\bantes?\b|\bbaseline\b|\bantes\/depois\b/i.test(text);
-	const hasNumbers = /\d+%|\d+ms|\d+\/\d+|\d+ linhas|score \d+/i.test(text);
+	const hasMetricDelta = /\bbefore\b.*\bafter\b|\bafter\b.*\bbefore\b|\bbaseline\b|\bbefore\/after\b/i.test(text);
+	const hasNumbers = /\d+%|\d+ms|\d+\/\d+|\d+ lines|score \d+/i.test(text);
 	const c8 = hasMetricDelta && hasNumbers;
 	checks.push({ id: "C8", name: "Before/after metrics with numbers", passed: c8, detail: `delta=${hasMetricDelta} numbers=${hasNumbers}` });
 	if (c8) score += 10;
@@ -105,20 +105,20 @@ export async function runResponseValidatorCheck(responsePath: string): Promise<v
 	mkdirSync(dirname(outputPath), { recursive: true });
 
 	const output = [
-		"# Validator Check (integrado, não-crítico)",
+		"# Validator Check (integrated, non-critical)",
 		"",
 		`- **RESPONSE.md**: ${responsePath}`,
 		`- **Score**: ${score}/${maxScore}`,
-		`- **Status**: ${score >= 50 ? "PASS" : "FAIL (≥50/85 para aprovação)"}`,
+		`- **Status**: ${score >= 50 ? "PASS" : "FAIL (≥50/85 to pass)"}`,
 		"",
 		"## Checks",
 		"",
-		"| Check | Nome | Resultado | Detalhe |",
-		"|-------|------|-----------|---------|",
+		"| Check | Name | Result | Detail |",
+		"|-------|------|--------|--------|",
 		...checks.map((c) => `| ${c.id} | ${c.name} | ${c.passed ? "✓" : "✗"} | ${c.detail} |`),
 		"",
 		"---",
-		`*Gerado em ${new Date().toISOString()} por validator-check.ts*`,
+		`*Generated at ${new Date().toISOString()} by validator-check.ts*`,
 	].join("\n");
 
 	writeFileSync(outputPath, output, "utf-8");
