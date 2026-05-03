@@ -8,7 +8,7 @@
  * duplication with response-validator.ts.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 import {
@@ -39,10 +39,10 @@ function validateExtended(text: string): { checks: Check[]; score: number; maxSc
 	checks.push({ id: "C1", name: "Minimum 50 non-empty lines", passed: c1, detail: `${nonEmptyLines} lines found` });
 	if (c1) score += 10;
 
-	// C2: Required sections
+	// C2: Required sections (S4 fix: case-insensitive match)
 	let missingSections = 0;
 	for (const section of REQUIRED_SECTIONS) {
-		if (!text.includes(`## ${section}`)) missingSections += 1;
+		if (!(text.includes(`## ${section}`) || text.includes(`## ${section.toLowerCase()}`))) missingSections += 1;
 	}
 	checks.push({ id: "C2", name: "All required sections present", passed: missingSections === 0, detail: `${REQUIRED_SECTIONS.length - missingSections}/${REQUIRED_SECTIONS.length}` });
 	if (missingSections === 0) score += 15;
@@ -99,7 +99,10 @@ export async function runResponseValidatorCheck(responsePath: string): Promise<v
 
 	const text = readFileSync(responsePath, "utf-8");
 	const { checks, score, maxScore } = validateExtended(text);
-	const outputPath = resolve(dirname(responsePath), "..", "experiments", "results", "validator-check-output.md");
+	// C3 fix: Write output inside the callDir itself (sibling of RESPONSE.md)
+	// and create directories recursively
+	const outputPath = resolve(dirname(responsePath), "validator-check-output.md");
+	mkdirSync(dirname(outputPath), { recursive: true });
 
 	const output = [
 		"# Validator Check (integrado, não-crítico)",

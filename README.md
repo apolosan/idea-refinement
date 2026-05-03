@@ -33,12 +33,6 @@ E depois adicione ao seu `settings.json` do Pi:
 ## Pré-requisitos
 
 - **Node.js ≥ 22** (usa `--experimental-strip-types`)
-- Um arquivo `numberGenerator.js` na raiz do projeto que imprima um inteiro entre 1 e 100 no stdout. Exemplo:
-
-```js
-// numberGenerator.js
-console.log(Math.floor(Math.random() * 100) + 1);
-```
 
 ## O que ela faz
 
@@ -114,7 +108,10 @@ docs/idea_refinement/artifacts_call_NN/
 ├── BACKLOG.md
 ├── RESPONSE.md          # versão mais recente
 ├── FEEDBACK.md          # versão mais recente
-├── RUN.json             # manifesto estruturado da execução
+├── REPORT.md            # relatório consolidado final
+├── CHECKLIST.md         # checklist de ações acionáveis
+├── validator-check-output.md  # resultado da validação epistêmica
+├── run.json             # manifesto estruturado da execução
 ├── logs/
 │   ├── bootstrap.jsonl
 │   ├── loop_01_develop.jsonl
@@ -135,12 +132,20 @@ A extensão não depende do agente atual para orquestrar o processo.
 
 Ela própria:
 
-- executa `node numberGenerator.js` quando necessário;
+- gera números aleatórios não-determinísticos via Mersenne Twister + entropia criptográfica para guiar o workflow;
 - dispara subprocessos do próprio `pi` em sequência;
 - injeta prompts de sistema específicos por etapa;
 - captura o texto final de cada subprocesso;
 - grava os artefatos por código;
-- atualiza `RUN.json` durante toda a execução.
+- atualiza `run.json` durante toda a execução.
+
+## Variável de ambiente
+
+### `PI_IDEA_REFINEMENT_PROTECTED_ROOTS`
+
+Esta variável de ambiente é usada internamente pela extensão para proteger os diretórios de artefatos contra escrita durante a execução do workflow. O `artifact-guard.ts` bloqueia operações de `write` e `edit` em caminhos protegidos até que o workflow atinja um estado terminal (`success` ou `failed`).
+
+**Não é necessário configurar manualmente** — a extensão a define automaticamente ao iniciar cada subprocesso.
 
 ## Salvaguardas implementadas
 

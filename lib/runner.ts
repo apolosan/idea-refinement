@@ -112,7 +112,8 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 	const currentScript = process.argv[1];
 	const isBunVirtualScript = currentScript?.startsWith("/$bunfs/root/");
 	if (currentScript && !isBunVirtualScript && fs.existsSync(currentScript)) {
-		return { command: process.execPath, args: [currentScript, ...args] };
+		// C5 fix: propagate process.execArgv (e.g. --experimental-strip-types) to subprocess
+		return { command: process.execPath, args: [...process.execArgv, currentScript, ...args] };
 	}
 
 	const execName = path.basename(process.execPath).toLowerCase();
@@ -209,14 +210,24 @@ export interface RunPiStageOptions {
 	protectedRoots: string[];
 	onProgress?: (message: string) => void;
 	onEvent?: (event: PiStageStreamEvent) => void;
+	/** D3 fix: Timeout in ms. Default: 10 minutes. Set to 0 to disable. */
+	timeoutMs?: number;
+	/**
+	 * Override the subprocess invocation.
+	 * `command`: the executable to run.
+	 * `args`: base args prepended to the standard buildPiArgs output.
+	 * Standard args (--append-system-prompt, --model, user prompt, etc.) are always appended.
+	 */
 	invocation?: {
 		command: string;
-		args: string[];
+		args?: string[];
 	};
 }
 
 export async function runPiStage(options: RunPiStageOptions): Promise<StageExecutionResult> {
 	const { cwd, model, thinkingLevel, systemPrompt, userPrompt, logPath, stderrPath, protectedRoots, onProgress, onEvent } = options;
+	// D3 fix: Default timeout of 10 minutes. Set to 0 to disable.
+	const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
 	const usage = zeroUsage();
 	let lastAssistant: AssistantMessageSummary = {};
 	let stderrTail = "";
@@ -251,7 +262,9 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			cwd,
 		});
 
-		const invocation = options.invocation ?? getPiInvocation(args);
+		const invocation = options.invocation
+			? { command: options.invocation.command, args: [...(options.invocation.args ?? []), ...args] }
+			: getPiInvocation(args);
 
 		const exitCode = await new Promise<number>((resolve, reject) => {
 			const proc = spawn(invocation.command, invocation.args, {
@@ -263,6 +276,28 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 					[PROTECTED_ROOTS_ENV]: JSON.stringify(protectedRoots),
 				},
 			});
+
+			// D3 fix: Timeout handling
+			let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+			if (timeoutMs > 0) {
+				timeoutTimer = setTimeout(() => {
+					try { proc.kill("SIGTERM"); } catch {}
+					reject(new Error(`Stage timed out after ${timeoutMs}ms`));
+				}, timeoutMs);
+			}
+
+			// D4 fix: Propagate SIGTERM/SIGINT to subprocess
+			const onParentSignal = () => {
+				try { proc.kill("SIGTERM"); } catch {}
+			};
+			process.once("SIGTERM", onParentSignal);
+			process.once("SIGINT", onParentSignal);
+
+			const cleanup = () => {
+				if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = undefined; }
+				process.off("SIGTERM", onParentSignal);
+				process.off("SIGINT", onParentSignal);
+			};
 
 			const stdoutDecoder = new StringDecoder("utf8");
 			const stderrDecoder = new StringDecoder("utf8");
@@ -347,8 +382,9 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				stderrTail = appendTail(stderrTail, stderrDecoder.write(chunk), STDERR_TAIL_LIMIT);
 			});
 
-			proc.on("error", (error) => reject(error));
+			proc.on("error", (error) => { cleanup(); reject(error); });
 			proc.on("close", (code) => {
+				cleanup();
 				buffer += stdoutDecoder.end();
 				if (buffer.trim().length > 0) {
 					const finalLine = buffer.trimEnd();

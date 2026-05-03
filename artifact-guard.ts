@@ -4,24 +4,30 @@ import { isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mar
 import { isPathInsideRoots, parseProtectedRoots, PROTECTED_ROOTS_ENV } from "./lib/path-guards.ts";
 
 /**
- * Checks if a workflow manifest exists and is in a terminal state (success or failed).
- * If so, the artifact guard is relaxed to allow writes to protected paths.
+ * R1 fix: Checks if a specific root's workflow manifest is in a terminal state.
+ * Only allows writes to roots whose own workflow has completed.
  */
-function isWorkflowInTerminalState(protectedRoots: string[]): boolean {
-	for (const root of protectedRoots) {
-		const manifestPath = path.join(root, "run.json");
-		if (existsSync(manifestPath)) {
-			try {
-				const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-				if (manifest.status === "success" || manifest.status === "failed") {
-					return true;
-				}
-			} catch {
-				// If manifest can't be parsed, assume workflow is still running
-			}
-		}
+function isRootInTerminalState(root: string): boolean {
+	const manifestPath = path.join(root, "run.json");
+	if (!existsSync(manifestPath)) return false;
+	try {
+		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+		return manifest.status === "success" || manifest.status === "failed";
+	} catch {
+		return false;
 	}
-	return false;
+}
+
+/**
+ * Finds which protected root contains the target path.
+ * Returns undefined if the path is not inside any protected root.
+ */
+function findContainingRoot(targetPath: string, cwd: string, roots: string[]): string | undefined {
+	const resolvedTarget = path.resolve(cwd, targetPath);
+	return roots.find((root) => {
+		const resolvedRoot = path.resolve(root);
+		return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
+	});
 }
 
 export default function artifactGuardExtension(pi: ExtensionAPI) {
@@ -32,9 +38,11 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 		if (isToolCallEventType("write", event) || isToolCallEventType("edit", event)) {
 			const targetPath = typeof event.input.path === "string" ? event.input.path : undefined;
 			if (!targetPath) return;
-			if (isPathInsideRoots(targetPath, ctx.cwd, protectedRoots)) {
-				// P2-1: Allow writes when workflow has completed (success or failed)
-				if (isWorkflowInTerminalState(protectedRoots)) {
+			// R1 fix: Find which specific root contains this path
+			const containingRoot = findContainingRoot(targetPath, ctx.cwd, protectedRoots);
+			if (containingRoot) {
+				// Only allow writes if THIS specific root's workflow is terminal
+				if (isRootInTerminalState(containingRoot)) {
 					return;
 				}
 				return {

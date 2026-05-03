@@ -8,6 +8,7 @@ import {
 	setIdeaRefinementMonitorDetail,
 	shouldUseUnicode,
 	stageDisplayName,
+	WORKING_MESSAGE_LIMIT,
 } from "./lib/ui-monitor.ts";
 import { runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
@@ -116,8 +117,8 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 				// setWorkingMessage = detalhe da ação atual — o que o agente está fazendo AGORA.
 				const detailLine = monitorState.currentDetail ?? monitorState.lastError ?? undefined;
 				const wm = detailLine
-					? detailLine.length > 80 ? `${detailLine.slice(0, 77)}...` : detailLine
-					: statusLine ? (statusLine.length > 80 ? `${statusLine.slice(0, 77)}...` : statusLine)
+					? detailLine.length > WORKING_MESSAGE_LIMIT ? `${detailLine.slice(0, WORKING_MESSAGE_LIMIT - 3)}...` : detailLine
+					: statusLine ? (statusLine.length > WORKING_MESSAGE_LIMIT ? `${statusLine.slice(0, WORKING_MESSAGE_LIMIT - 3)}...` : statusLine)
 					: undefined;
 				if (wm !== lastWorkingMessage) {
 					lastWorkingMessage = wm;
@@ -176,7 +177,10 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 
 				// P1 #6: Valida RESPONSE.md com validator epistêmico (assíncrono, não crítico)
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				runResponseValidatorCheck(responsePath).catch(() => {});
+				// C4 fix: Log errors instead of silently swallowing
+				runResponseValidatorCheck(responsePath).catch((err) => {
+					console.error("[idea-refinement] Validator check failed:", err);
+				});
 
 				scheduleRender(true);
 				const lastScoreSuffix = typeof result.latestScore === "number" ? ` • score final ${result.latestScore}/100` : "";

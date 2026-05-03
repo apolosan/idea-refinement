@@ -23,7 +23,7 @@ export interface IdeaRefinementMonitorState {
 }
 
 const STATUS_DETAIL_LIMIT = 120;
-const WORKING_MESSAGE_LIMIT = 80;
+export const WORKING_MESSAGE_LIMIT = 80;
 
 /**
  * M2 fix: stageDisplayName now exported from ui-monitor.ts
@@ -190,7 +190,7 @@ function applyStateUpdate(state: IdeaRefinementMonitorState, update: Partial<Ide
 	if (!update) return;
 	for (const key of Object.keys(update) as (keyof IdeaRefinementMonitorState)[]) {
 		const value = update[key];
-		if (value !== undefined) {
+		if (key in update) {
 			(state as unknown as Record<string, unknown>)[key] = value;
 		}
 	}

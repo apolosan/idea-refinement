@@ -230,7 +230,7 @@ export function buildInitialArtifactsUserPrompt(options: {
 		"Etapa atual: geração dos artefatos iniciais.",
 		`Leia primeiro o arquivo da ideia original: ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
 		`Diretório de artefatos desta chamada: ${toProjectRelativePath(cwd, workspace.callDir)}`,
-		`Número aleatório gerado por node numberGenerator.js: ${randomNumber}`,
+		`Número aleatório gerado: ${randomNumber}`,
 		`Política principal esperada pela regra do workflow: ${policy}`,
 		"Na DIRECTIVE.md, inclua SEMPRE as duas políticas completas (OPTIMIZATION e CREATIVITY/EXPLORATION).",
 		"Use o número aleatório apenas para marcar a política principal ativa na linha Selected Policy.",
