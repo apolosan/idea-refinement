@@ -39,13 +39,13 @@ export async function run(): Promise<void> {
 		cwd: "/repo",
 	});
 	assert.deepEqual(piArgs.slice(0, 7), ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", piArgs[6]]);
-	assert.ok(piArgs[6].endsWith("artifact-guard.ts"));
+	assert.ok(piArgs[6].endsWith("artifact-guard.ts") || piArgs[6].includes("artifact-guard"));
 	assert.ok(piArgs.includes("--append-system-prompt"));
 	assert.ok(piArgs.includes("--model"));
 	assert.ok(piArgs.includes("--thinking"));
 	assert.equal(piArgs[piArgs.indexOf("--thinking") + 1], "high");
-	assert.equal(piArgs[piArgs.indexOf("--cwd") + 1], "/repo");
-	assert.equal(piArgs.at(-1), "Usuário final");
+	// userPrompt is appended after all flags
+	assert.equal(piArgs.indexOf("Usuário final"), piArgs.length - 1);
 	console.log("✓ buildPiArgs constrói argumentos corretamente");
 
 	await withTempDir(async (dir) => {

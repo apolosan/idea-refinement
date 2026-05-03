@@ -1,6 +1,6 @@
 {
   "name": "@apolosan/idea-refinement",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Extensão para o Pi Coding Agent que executa um workflow iterativo forçado de refinamento de ideias via comando /idea-refine.",
   "keywords": [
     "pi-package",

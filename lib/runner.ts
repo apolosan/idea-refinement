@@ -102,8 +102,6 @@ export function buildPiArgs(options: { tempPromptPath: string; userPrompt: strin
 	];
 	if (model) args.push("--model", model);
 	if (thinkingLevel) args.push("--thinking", thinkingLevel);
-	// C5 fix: Include --cwd in subprocess args to ensure correct directory
-	if (cwd) args.push("--cwd", cwd);
 	args.push(userPrompt);
 	return args;
 }
