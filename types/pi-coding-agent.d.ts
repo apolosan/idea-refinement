@@ -31,8 +31,9 @@ declare module "@mariozechner/pi-coding-agent" {
 			notify(message: string, level: "info" | "warning" | "error"): void;
 			setStatus(key: string, value: string | undefined): void;
 			setWorkingMessage?(message: string | undefined): void;
-			setWidget(key: string, lines: string[]): void;
 			setWorkingVisible?(visible: boolean): void;
+			setWorkingIndicator?(options?: { frames?: string[]; intervalMs?: number }): void;
+			setWidget(key: string, lines: string[]): void;
 		};
 	}
 

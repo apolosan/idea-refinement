@@ -1,15 +1,12 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { Spinner } from "./lib/spinner.ts";
 import {
 	applyIdeaRefinementProgressEvent,
 	buildIdeaRefinementStatusLine,
 	buildIdeaRefinementWidgetLines,
 	createIdeaRefinementMonitorState,
 	setIdeaRefinementMonitorDetail,
-	shouldUseUnicode,
 	stageDisplayName,
-	WORKING_MESSAGE_LIMIT,
 } from "./lib/ui-monitor.ts";
 import { runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
@@ -110,17 +107,13 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			let lastConsoleEventMessage: string | undefined;
 			let lastWorkingMessage: string | undefined;
 
-			const spinner = new Spinner({
-				useUnicode: shouldUseUnicode(),
-				onFrame: (frame, message) => {
-					const text = message ? `${frame} ${message}` : frame;
-					const limited = text.length > WORKING_MESSAGE_LIMIT ? `${text.slice(0, WORKING_MESSAGE_LIMIT - 3)}...` : text;
-					if (limited !== lastWorkingMessage) {
-						lastWorkingMessage = limited;
-						ctx.ui.setWorkingMessage?.(limited);
-					}
-				},
-			});
+			const setWorking = (message: string | undefined) => {
+				const limited = message && message.length > 80 ? `${message.slice(0, 77)}...` : message;
+				if (limited !== lastWorkingMessage) {
+					lastWorkingMessage = limited;
+					ctx.ui.setWorkingMessage?.(limited);
+				}
+			};
 
 			const renderMonitor = () => {
 				const statusLine = buildIdeaRefinementStatusLine(monitorState);
@@ -150,7 +143,7 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 
 			const updateUiStatus = (message: string | undefined) => {
 				setIdeaRefinementMonitorDetail(monitorState, message);
-				spinner.update(message);
+				setWorking(message);
 				scheduleRender(true);
 			};
 
@@ -167,8 +160,9 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			// Clear dedup cache when starting a new run
 			lastWorkingMessage = undefined;
 			ctx.ui.setWorkingVisible?.(true);
+			ctx.ui.setWorkingIndicator?.({ frames: ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"], intervalMs: 80 });
 			ctx.ui.notify(`Starting /idea-refine with ${loops} loop(s). Progress will be shown in the console and monitor.`, "info");
-			spinner.start("Initializing workflow monitor...");
+			setWorking("Initializing workflow monitor...");
 
 			try {
 				const result = await runIdeaRefinementWorkflow({
@@ -210,7 +204,7 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 					clearTimeout(renderTimer);
 					renderTimer = undefined;
 				}
-				spinner.stop();
+				ctx.ui.setWorkingIndicator?.();
 				ctx.ui.setStatus(STATUS_KEY, undefined);
 				ctx.ui.setWorkingMessage?.(undefined);
 				ctx.ui.setWorkingVisible?.(false);

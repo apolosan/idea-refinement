@@ -23,8 +23,6 @@ export interface IdeaRefinementMonitorState {
 }
 
 const STATUS_DETAIL_LIMIT = 120;
-export const WORKING_MESSAGE_LIMIT = 80;
-
 /**
  * M2 fix: stageDisplayName now exported from ui-monitor.ts
  * (was also defined locally in workflow.ts — removed duplicate)
@@ -334,35 +332,19 @@ export function buildIdeaRefinementStatusLine(state: IdeaRefinementMonitorState)
 export function buildIdeaRefinementWidgetLines(state: IdeaRefinementMonitorState): string[] {
 	const requestedLoops = state.requestedLoops || 0;
 	const loopBar = buildLoopProgressBar(state.completedLoops, requestedLoops, 20);
-	const lines: string[] = [];
-
-	// SECTION 1: Header (3 lines)
-	lines.push("[ IDEA REFINE MONITOR ]");
-	// P0-1: Score always visible — shows value or "--" placeholder regardless of status
-	const scoreSuffix = typeof state.latestScore === "number" ? ` | score ${state.latestScore}/100` : " | score --/100";
-	lines.push(`  status: ${workflowStatusLabel(state.workflowStatus)}${scoreSuffix}`);
-	lines.push(`  dir: ${state.relativeCallDir?.split("/").pop() ?? "preparing..."}`);
-
-	// SECTION 2: Progress (2 lines — A2: inline bar with loops)
-	lines.push("[ PROGRESS ]");
-	const currentLabel = state.currentLoop !== undefined ? ` (current: ${state.currentLoop})` : "";
-	lines.push(`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`);
-
-	// SECTION 3: Pipeline (4 lines)
-	lines.push("[ STAGES ]");
 	const unicode = shouldUseUnicode();
-	lines.push(`  ${stageStatusIcon(state.bootstrapStatus, unicode)} bootstrap`);
-	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.develop, unicode)} develop`);
-	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.evaluate, unicode)} evaluate`);
-	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.learning, unicode)} learning`);
-	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.report, unicode)} report`);
-	lines.push(`  ${stageStatusIcon(state.loopStageStatuses.checklist, unicode)} checklist`);
+	const scoreSuffix = typeof state.latestScore === "number" ? ` | score ${state.latestScore}/100` : " | score --/100";
+	const currentLabel = state.currentLoop !== undefined ? ` (current: ${state.currentLoop})` : "";
 
-	// SECTION 4: Current (3 lines)
-	lines.push("[ CURRENT ]");
-	lines.push(`  stage: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)}`);
-	lines.push(`  tool: ${state.activeTool ?? "none"}`);
-	lines.push(`  detail: ${truncate(state.currentDetail ?? state.lastError ?? "...", 120)}`);
+	// Compact layout: guaranteed ≤ 10 lines to avoid "... (widget truncated)" from host
+	const lines: string[] = [
+		"[ IDEA REFINE MONITOR ]",
+		`  status: ${workflowStatusLabel(state.workflowStatus)}${scoreSuffix} | dir: ${state.relativeCallDir?.split("/").pop() ?? "preparing..."}`,
+		`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`,
+		`  stages: ${stageStatusIcon(state.bootstrapStatus, unicode)} bootstrap  ${stageStatusIcon(state.loopStageStatuses.develop, unicode)} develop  ${stageStatusIcon(state.loopStageStatuses.evaluate, unicode)} evaluate  ${stageStatusIcon(state.loopStageStatuses.learning, unicode)} learning  ${stageStatusIcon(state.loopStageStatuses.report, unicode)} report  ${stageStatusIcon(state.loopStageStatuses.checklist, unicode)} checklist`,
+		`  current: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)} | tool: ${state.activeTool ?? "none"}`,
+		`  detail: ${truncate(state.currentDetail ?? state.lastError ?? "...", 120)}`,
+	];
 
 	return lines;
 }

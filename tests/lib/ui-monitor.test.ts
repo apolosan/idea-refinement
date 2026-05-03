@@ -128,15 +128,18 @@ export async function run(): Promise<void> {
 	const widgetLines = buildIdeaRefinementWidgetLines(state);
 	const widgetText = widgetLines.join("\n");
 	assert.match(widgetText, /\[ IDEA REFINE MONITOR \]/);
-	assert.match(widgetText, /\[ PROGRESS \]/);
-	assert.match(widgetText, /\[ STAGES \]/);
-	assert.match(widgetText, /\[ CURRENT \]/);
+	assert.match(widgetText, /status:/);
+	assert.match(widgetText, /loops:/);
+	assert.match(widgetText, /stages:/);
+	assert.match(widgetText, /current:/);
+	assert.match(widgetText, /detail:/);
 	assert.match(widgetText, /bootstrap/);
 	assert.match(widgetText, /develop/);
 	assert.match(widgetText, /evaluate/);
 	assert.match(widgetText, /learning/);
 	assert.match(widgetText, /report/);
 	assert.match(widgetText, /checklist/);
+	assert.ok(widgetLines.length <= 10, `Widget has ${widgetLines.length} lines, expected ≤ 10`);
 	console.log("✓ buildIdeaRefinementWidgetLines generates complete widget");
 
 	// Score always visible

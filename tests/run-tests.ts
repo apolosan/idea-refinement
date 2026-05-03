@@ -12,7 +12,6 @@ import { run as runRunnerTests } from "./lib/runner.test.ts";
 import { run as runNumberGeneratorTests } from "./lib/number-generator.test.ts";
 import { run as runPromptsTests } from "./lib/prompts.test.ts";
 import { run as runArtifactGuardTests } from "./lib/artifact-guard.test.ts";
-import { run as runSpinnerTests } from "./lib/spinner.test.ts";
 import { run as runWorkflowTests } from "./lib/workflow.test.ts";
 
 async function run(): Promise<void> {
@@ -31,7 +30,6 @@ async function run(): Promise<void> {
 		{ name: "number-generator", run: runNumberGeneratorTests },
 		{ name: "prompts", run: runPromptsTests },
 		{ name: "artifact-guard", run: runArtifactGuardTests },
-		{ name: "spinner", run: runSpinnerTests },
 		{ name: "workflow", run: runWorkflowTests },
 	];
 
