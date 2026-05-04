@@ -28,13 +28,20 @@ export interface SnapshotDiff {
 	hasChanges: boolean;     // true if changed + added + removed > 0
 }
 
+export interface TakeSnapshotOptions {
+	scope?: string[];
+	maxDepth?: number;
+	maxFiles?: number;
+}
+
 /**
  * Takes a SHA256 snapshot of .ts files in the extension root directory.
  * Returns a map of relative path → hash.
  * If the directory does not exist, returns an empty object.
  */
-export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot> {
+export async function takeSnapshot(extensionRoot: string, options?: TakeSnapshotOptions): Promise<FileSnapshot> {
 	const snapshot: FileSnapshot = {};
+	const { scope, maxDepth = Infinity, maxFiles = Infinity } = options ?? {};
 
 	try {
 		await fs.access(extensionRoot);
@@ -42,7 +49,20 @@ export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot>
 		return snapshot;
 	}
 
-	async function walkDir(dir: string): Promise<void> {
+	let fileCount = 0;
+	let depthExceeded = false;
+	let filesExceeded = false;
+
+	async function walkDir(dir: string, depth: number): Promise<void> {
+		if (depth > maxDepth) {
+			depthExceeded = true;
+			return;
+		}
+		if (fileCount >= maxFiles) {
+			filesExceeded = true;
+			return;
+		}
+
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(dir, { withFileTypes: true });
@@ -51,14 +71,19 @@ export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot>
 		}
 
 		for (const entry of entries) {
+			if (fileCount >= maxFiles) {
+				filesExceeded = true;
+				return;
+			}
 			const fullPath = path.join(dir, entry.name);
 			if (entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith(".")) {
-				await walkDir(fullPath);
+				await walkDir(fullPath, depth + 1);
 			} else if (entry.isFile() && entry.name.endsWith(".ts")) {
 				const relPath = path.relative(extensionRoot, fullPath);
 				try {
 					const content = await fs.readFile(fullPath, "utf-8");
 					snapshot[relPath] = createHash("sha256").update(content, "utf-8").digest("hex");
+					fileCount++;
 				} catch {
 					// skip unreadable files
 				}
@@ -66,7 +91,18 @@ export async function takeSnapshot(extensionRoot: string): Promise<FileSnapshot>
 		}
 	}
 
-	await walkDir(extensionRoot);
+	const roots = scope && scope.length > 0
+		? scope.map((s) => path.resolve(extensionRoot, s))
+		: [extensionRoot];
+
+	for (const root of roots) {
+		await walkDir(root, 0);
+	}
+
+	if (depthExceeded || filesExceeded) {
+		console.warn(`[idea-refinement] Snapshot truncated: depthExceeded=${depthExceeded}, filesExceeded=${filesExceeded}, maxDepth=${maxDepth}, maxFiles=${maxFiles}`);
+	}
+
 	return snapshot;
 }
 

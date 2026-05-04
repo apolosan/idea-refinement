@@ -168,6 +168,58 @@ Mandatory output contract:
 ...full content...
 <<<END FILE: BACKLOG.md>>>`;
 
+/**
+ * Merged evaluate + learning system prompt.
+ * Combines evaluation and learning update into a single stage to reduce subprocess spawns.
+ * The agent produces FEEDBACK.md, LEARNING.md, and BACKLOG.md in one pass.
+ */
+export const EVALUATE_LEARNING_SYSTEM_PROMPT = `You are the combined evaluation and learning-update agent of the workflow.
+
+Your objective is to generate the COMPLETE content of EXACTLY three Markdown files:
+1. FEEDBACK.md (critical evaluation)
+2. LEARNING.md (updated learning base)
+3. BACKLOG.md (updated backlog)
+
+Phase 1 — Evaluation (FEEDBACK.md):
+- Read CRITERIA.md, RESPONSE.md, DIAGNOSIS.md, METRICS.md, and BACKLOG.md before evaluating.
+- Be highly critical, rigorous, specific, and evidence-oriented.
+- Avoid vague praise. Every conclusion must be sustained by the criteria.
+- Do not rewrite RESPONSE.md; evaluate it.
+- Verify whether conclusions really derive from the registered evidence.
+- Explicitly point out pseudo-rigor, empty scores, ornamental matrices, ornamental benchmarks, rubrics without decision, and broad claims without verifiable base.
+- Evaluate the before/after comparison with the minimum criteria: clarity, depth, distinction between alternatives, actionability, and operational cost.
+- Formalize the final iteration decision as: keep, adjust, discard, or test later.
+- Include the exact line: Overall score: NN/100
+- The value NN must be an integer between 1 and 100.
+- Present the score on 2 additional axes beyond the total:
+  - **Process Rigor** (C8 + C9 + C10): score from 0 to 100 representing the quality of the analytical process.
+  - **Material Result** (C1 + C4 + C6 + C7): score from 0 to 100 representing the quality of concrete deliverables.
+  - The 'Material Result' axis MUST have weight ≥ 60% in the final score.
+  - Include the lines: Process Rigor score: NN/100 and Material Result score: NN/100
+
+Phase 2 — Learning Update (LEARNING.md + BACKLOG.md):
+- Read current LEARNING.md, current BACKLOG.md, RESPONSE.md, and the FEEDBACK.md you just generated.
+- Preserve useful existing structure; consolidate rather than expand.
+- Incorporate learnings, insights, references, gaps, and actionable directions.
+- Eliminate redundancies and historical repetitions.
+- Keep LEARNING.md short, information-dense, operational memory.
+- Update BACKLOG.md as a unique, governable list.
+- Preserve only what has operational value for next loops.
+- Do not change the project focus or rewrite the directive.
+- Write in English.
+- Do not include explanations outside the final documents.
+
+Mandatory output contract:
+<<<BEGIN FILE: FEEDBACK.md>>>
+...full content...
+<<<END FILE: FEEDBACK.md>>>
+<<<BEGIN FILE: LEARNING.md>>>
+...full content...
+<<<END FILE: LEARNING.md>>>
+<<<BEGIN FILE: BACKLOG.md>>>
+...full content...
+<<<END FILE: BACKLOG.md>>>`;
+
 export const REPORT_SYSTEM_PROMPT = `You are the agent responsible for consolidating the entire investigation/research/study process carried out by the idea-refinement workflow.
 
 Your objective is to generate ONLY the complete content of REPORT.md — a complete and final report of the investigation.
@@ -226,9 +278,10 @@ export function buildInitialArtifactsUserPrompt(options: {
 	policy: DirectivePolicy;
 }): string {
 	const { cwd, workspace, randomNumber, policy } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: generation of initial artifacts.",
-		`Read the original idea file first: ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
+		`Read the original idea file first: ${rp.idea}`,
 		`Artifacts directory for this call: ${toProjectRelativePath(cwd, workspace.callDir)}`,
 		`Generated random number: ${randomNumber}`,
 		`Primary policy expected by the workflow rule: ${policy}`,
@@ -245,19 +298,20 @@ export function buildDevelopmentUserPrompt(options: {
 	requestedLoops: number;
 	randomNumber: number;
 }): string {
-	const { cwd, workspace, loopNumber, requestedLoops, randomNumber } = options;
+	const { workspace, loopNumber, requestedLoops, randomNumber } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: idea development for RESPONSE.md.",
 		`Current loop: ${loopNumber}/${requestedLoops}`,
 		`This loop's random number: ${randomNumber}`,
 		"Read these files before responding:",
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.criteria)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
+		`- ${rp.idea}`,
+		`- ${rp.directive}`,
+		`- ${rp.learning}`,
+		`- ${rp.criteria}`,
+		`- ${rp.diagnosis}`,
+		`- ${rp.metrics}`,
+		`- ${rp.backlog}`,
 		"Respond objectively, comparably, evidence-oriented, and without unnecessary redundancies.",
 		"Return only the complete content of RESPONSE.md.",
 	].join("\n");
@@ -269,16 +323,17 @@ export function buildEvaluationUserPrompt(options: {
 	loopNumber: number;
 	requestedLoops: number;
 }): string {
-	const { cwd, workspace, loopNumber, requestedLoops } = options;
+	const { workspace, loopNumber, requestedLoops } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: critical evaluation of the response for FEEDBACK.md.",
 		`Evaluated loop: ${loopNumber}/${requestedLoops}`,
 		"Read these files before responding:",
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.criteria)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
+		`- ${rp.criteria}`,
+		`- ${rp.diagnosis}`,
+		`- ${rp.metrics}`,
+		`- ${rp.backlog}`,
+		`- ${rp.response}`,
 		"Return only the complete content of FEEDBACK.md.",
 	].join("\n");
 }
@@ -289,18 +344,44 @@ export function buildLearningUpdateUserPrompt(options: {
 	loopNumber: number;
 	requestedLoops: number;
 }): string {
-	const { cwd, workspace, loopNumber, requestedLoops } = options;
+	const { workspace, loopNumber, requestedLoops } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: cumulative and compact update of LEARNING.md and BACKLOG.md.",
 		`Completed loop: ${loopNumber}/${requestedLoops}`,
 		"Read these files before responding:",
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
+		`- ${rp.idea}`,
+		`- ${rp.learning}`,
+		`- ${rp.backlog}`,
+		`- ${rp.response}`,
+		`- ${rp.feedback}`,
 		"Update the documents preserving only operational memory and high-value backlog, without duplication.",
 		"Return only the complete updated content of LEARNING.md and BACKLOG.md.",
+	].join("\n");
+}
+
+export function buildEvaluateLearningUserPrompt(options: {
+	cwd: string;
+	workspace: CallWorkspace;
+	loopNumber: number;
+	requestedLoops: number;
+}): string {
+	const { workspace, loopNumber, requestedLoops } = options;
+	const rp = workspace.relativePaths;
+	return [
+		"Current stage: combined evaluation and learning update.",
+		`Evaluated loop: ${loopNumber}/${requestedLoops}`,
+		"Read these files before responding:",
+		`- ${rp.idea}`,
+		`- ${rp.criteria}`,
+		`- ${rp.diagnosis}`,
+		`- ${rp.metrics}`,
+		`- ${rp.backlog}`,
+		`- ${rp.response}`,
+		`- ${rp.learning}`,
+		"Phase 1: Generate FEEDBACK.md with critical evaluation.",
+		"Phase 2: Generate updated LEARNING.md and BACKLOG.md.",
+		"Return FEEDBACK.md, LEARNING.md, and BACKLOG.md using the required markers.",
 	].join("\n");
 }
 
@@ -310,20 +391,21 @@ export function buildReportUserPrompt(options: {
 	requestedLoops: number;
 	completedLoops: number;
 }): string {
-	const { cwd, workspace, requestedLoops, completedLoops } = options;
+	const { workspace, requestedLoops, completedLoops } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: final consolidation into REPORT.md.",
 		`Workflow completed: ${completedLoops}/${requestedLoops} loops executed.`,
 		"Read ALL produced artifacts before responding:",
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.criteria)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
+		`- ${rp.idea}`,
+		`- ${rp.directive}`,
+		`- ${rp.learning}`,
+		`- ${rp.criteria}`,
+		`- ${rp.diagnosis}`,
+		`- ${rp.metrics}`,
+		`- ${rp.backlog}`,
+		`- ${rp.response}`,
+		`- ${rp.feedback}`,
 		"Consolidate all findings, decisions, and learnings in a structured and accessible way.",
 		"Return only the complete content of REPORT.md.",
 	].join("\n");
@@ -335,20 +417,21 @@ export function buildChecklistUserPrompt(options: {
 	requestedLoops: number;
 	completedLoops: number;
 }): string {
-	const { cwd, workspace, requestedLoops, completedLoops } = options;
+	const { workspace, requestedLoops, completedLoops } = options;
+	const rp = workspace.relativePaths;
 	return [
 		"Current stage: generation of action checklist in CHECKLIST.md.",
 		`Workflow completed: ${completedLoops}/${requestedLoops} loops executed.`,
 		"Read ALL produced artifacts before responding:",
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.idea)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.directive)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.learning)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.criteria)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.diagnosis)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.metrics)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.backlog)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.response)}`,
-		`- ${toProjectRelativePath(cwd, workspace.rootFiles.feedback)}`,
+		`- ${rp.idea}`,
+		`- ${rp.directive}`,
+		`- ${rp.learning}`,
+		`- ${rp.criteria}`,
+		`- ${rp.diagnosis}`,
+		`- ${rp.metrics}`,
+		`- ${rp.backlog}`,
+		`- ${rp.response}`,
+		`- ${rp.feedback}`,
 		"Generate an actionable, prioritized, and verifiable list of actions to apply the idea or solve the problem.",
 		"Return only the complete content of CHECKLIST.md.",
 	].join("\n");

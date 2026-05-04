@@ -174,19 +174,12 @@ function isPiEvent(value: unknown): value is Record<string, unknown> {
 }
 
 // O6 fix: Remove "error" from stdout filter — errors come via stderr
+const KEEP_RE = /"type":"(?:session|agent_start|turn_start|turn_end|message_start|message_end|tool_execution_start|tool_execution_end)"/
+
 function shouldPersistStdoutLogLine(line: string): boolean {
 	if (line.length === 0) return false;
 	if (line.includes('"type":"message_update"')) return false;
-	return (
-		line.includes('"type":"session"') ||
-		line.includes('"type":"agent_start"') ||
-		line.includes('"type":"turn_start"') ||
-		line.includes('"type":"turn_end"') ||
-		line.includes('"type":"message_start"') ||
-		line.includes('"type":"message_end"') ||
-		line.includes('"type":"tool_execution_start"') ||
-		line.includes('"type":"tool_execution_end"')
-	);
+	return KEEP_RE.test(line);
 }
 
 // O8 fix: Simplified JSON string extraction using regex

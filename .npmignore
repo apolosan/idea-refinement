@@ -7,3 +7,4 @@ experiments/
 coverage/
 dist/
 *.tgz
+docs/idea_refinement/

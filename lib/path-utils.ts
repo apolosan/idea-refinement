@@ -21,6 +21,20 @@ export interface CallWorkspace {
 		report: string;
 		checklist: string;
 	};
+	/** D7 fix: Pre-computed relative paths to avoid repeated path.relative calls in prompt builders. */
+	relativePaths: {
+		idea: string;
+		directive: string;
+		learning: string;
+		criteria: string;
+		diagnosis: string;
+		metrics: string;
+		backlog: string;
+		response: string;
+		feedback: string;
+		report: string;
+		checklist: string;
+	};
 }
 
 export function formatCallNumber(callNumber: number): string {
@@ -78,25 +92,43 @@ export async function prepareCallWorkspace(cwd: string, callNumber: number): Pro
 	await fs.mkdir(logsDir, { recursive: true });
 	await fs.mkdir(loopsDir, { recursive: true });
 
+	const rootFiles = {
+		idea: path.join(callDir, ARTIFACT_FILE_NAMES.idea),
+		directive: path.join(callDir, ARTIFACT_FILE_NAMES.directive),
+		learning: path.join(callDir, ARTIFACT_FILE_NAMES.learning),
+		criteria: path.join(callDir, ARTIFACT_FILE_NAMES.criteria),
+		diagnosis: path.join(callDir, ARTIFACT_FILE_NAMES.diagnosis),
+		metrics: path.join(callDir, ARTIFACT_FILE_NAMES.metrics),
+		backlog: path.join(callDir, ARTIFACT_FILE_NAMES.backlog),
+		response: path.join(callDir, ARTIFACT_FILE_NAMES.response),
+		feedback: path.join(callDir, ARTIFACT_FILE_NAMES.feedback),
+		manifest: path.join(callDir, ARTIFACT_FILE_NAMES.manifest),
+		report: path.join(callDir, ARTIFACT_FILE_NAMES.report),
+		checklist: path.join(callDir, ARTIFACT_FILE_NAMES.checklist),
+	};
+
+	// D7 fix: Pre-compute relative paths once at workspace creation
+	const relativePaths = {
+		idea: toProjectRelativePath(cwd, rootFiles.idea),
+		directive: toProjectRelativePath(cwd, rootFiles.directive),
+		learning: toProjectRelativePath(cwd, rootFiles.learning),
+		criteria: toProjectRelativePath(cwd, rootFiles.criteria),
+		diagnosis: toProjectRelativePath(cwd, rootFiles.diagnosis),
+		metrics: toProjectRelativePath(cwd, rootFiles.metrics),
+		backlog: toProjectRelativePath(cwd, rootFiles.backlog),
+		response: toProjectRelativePath(cwd, rootFiles.response),
+		feedback: toProjectRelativePath(cwd, rootFiles.feedback),
+		report: toProjectRelativePath(cwd, rootFiles.report),
+		checklist: toProjectRelativePath(cwd, rootFiles.checklist),
+	};
+
 	return {
 		baseDir,
 		callDir,
 		logsDir,
 		loopsDir,
-		rootFiles: {
-			idea: path.join(callDir, ARTIFACT_FILE_NAMES.idea),
-			directive: path.join(callDir, ARTIFACT_FILE_NAMES.directive),
-			learning: path.join(callDir, ARTIFACT_FILE_NAMES.learning),
-			criteria: path.join(callDir, ARTIFACT_FILE_NAMES.criteria),
-			diagnosis: path.join(callDir, ARTIFACT_FILE_NAMES.diagnosis),
-			metrics: path.join(callDir, ARTIFACT_FILE_NAMES.metrics),
-			backlog: path.join(callDir, ARTIFACT_FILE_NAMES.backlog),
-			response: path.join(callDir, ARTIFACT_FILE_NAMES.response),
-			feedback: path.join(callDir, ARTIFACT_FILE_NAMES.feedback),
-			manifest: path.join(callDir, ARTIFACT_FILE_NAMES.manifest),
-			report: path.join(callDir, ARTIFACT_FILE_NAMES.report),
-			checklist: path.join(callDir, ARTIFACT_FILE_NAMES.checklist),
-		},
+		rootFiles,
+		relativePaths,
 	};
 }
 

@@ -2,17 +2,28 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { isPathInsideRoots, parseProtectedRoots, PROTECTED_ROOTS_ENV } from "./lib/path-guards.ts";
+import { terminalStateCache } from "./lib/terminal-state-cache.ts";
 
 /**
  * R1 fix: Checks if a specific root's workflow manifest is in a terminal state.
  * Only allows writes to roots whose own workflow has completed.
+ *
+ * P0 fix: Consults an in-memory cache before hitting the file system,
+ * reducing per-tool-call blocking to sub-millisecond on cache hits.
  */
 function isRootInTerminalState(root: string): boolean {
+	if (terminalStateCache.has(root)) return true;
+
 	const manifestPath = path.join(root, "run.json");
 	if (!existsSync(manifestPath)) return false;
 	try {
 		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-		return manifest.status === "success" || manifest.status === "failed";
+		if (manifest.status === "success" || manifest.status === "failed") {
+			terminalStateCache.add(root);
+			return true;
+		}
+		terminalStateCache.delete(root);
+		return false;
 	} catch {
 		return false;
 	}

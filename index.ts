@@ -124,6 +124,9 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 				ctx.ui.setWidget(WIDGET_KEY, buildIdeaRefinementWidgetLines(monitorState));
 			};
 
+			let lastRenderTime = 0;
+			const RENDER_THROTTLE_MS = 1000;
+
 			const scheduleRender = (immediate = false) => {
 				if (immediate) {
 					if (renderTimer) {
@@ -131,13 +134,22 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 						renderTimer = undefined;
 					}
 					renderMonitor();
+					lastRenderTime = Date.now();
 					return;
 				}
 
 				if (renderTimer) return;
+				const now = Date.now();
+				const elapsed = now - lastRenderTime;
+				if (elapsed >= RENDER_THROTTLE_MS) {
+					renderMonitor();
+					lastRenderTime = now;
+					return;
+				}
 				renderTimer = setTimeout(() => {
 					renderTimer = undefined;
 					renderMonitor();
+					lastRenderTime = Date.now();
 				}, RENDER_DEBOUNCE_MS);
 			};
 
@@ -160,7 +172,7 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			// Clear dedup cache when starting a new run
 			lastWorkingMessage = undefined;
 			ctx.ui.setWorkingVisible?.(true);
-			ctx.ui.setWorkingIndicator?.({ frames: ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"], intervalMs: 80 });
+			ctx.ui.setWorkingIndicator?.({ frames: ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"], intervalMs: 160 });
 			ctx.ui.notify(`Starting /idea-refine with ${loops} loop(s). Progress will be shown in the console and monitor.`, "info");
 			setWorking("Initializing workflow monitor...");
 

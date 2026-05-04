@@ -9,12 +9,14 @@ import { ensureLoopDirectory, findNextCallNumber, prepareCallWorkspace, toProjec
 import {
 	buildChecklistUserPrompt,
 	buildDevelopmentUserPrompt,
+	buildEvaluateLearningUserPrompt,
 	buildEvaluationUserPrompt,
 	buildInitialArtifactsUserPrompt,
 	buildLearningUpdateUserPrompt,
 	buildReportUserPrompt,
 	CHECKLIST_SYSTEM_PROMPT,
 	DEVELOPMENT_SYSTEM_PROMPT,
+	EVALUATE_LEARNING_SYSTEM_PROMPT,
 	EVALUATION_SYSTEM_PROMPT,
 	INITIAL_ARTIFACTS_SYSTEM_PROMPT,
 	LEARNING_UPDATE_SYSTEM_PROMPT,
@@ -118,6 +120,8 @@ async function runManagedStage(options: {
 	onStatus?: (message: string | undefined) => void;
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	statusMessage: string;
+	/** D6 fix: Optional timeout override for this stage (ms). */
+	timeoutMs?: number;
 	/** T3 fix: Optional invocation override for testing. */
 	invocation?: { command: string; args?: string[] };
 }): Promise<StageExecutionResult> {
@@ -139,6 +143,7 @@ async function runManagedStage(options: {
 		onStatus,
 		onEvent,
 		statusMessage,
+		timeoutMs,
 		invocation,
 	} = options;
 	markStageRunning(record);
@@ -167,6 +172,7 @@ async function runManagedStage(options: {
 			stderrPath: paths.stderrPath,
 			protectedRoots,
 			invocation,
+			timeoutMs,
 			onProgress: (detail) => {
 				const message = buildStageStatusMessage(statusMessage, detail);
 				onStatus?.(message);
@@ -323,7 +329,7 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 
 			// Snapshot C7: capture before develop to detect material changes
 			// C2 fix: Snapshot C7 captures project source (cwd), not extension source
-			const snapshotBefore = await takeSnapshot(cwd);
+			const snapshotBefore = await takeSnapshot(cwd, { scope: ["lib", "tests"], maxDepth: 6, maxFiles: 5000 });
 
 			const developResult = await runManagedStage({
 				cwd,
@@ -350,13 +356,16 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				onEvent,
 				statusMessage: `Loop ${loopNumber}/${loops}: developing RESPONSE.md`,
 				invocation,
+				// D6 fix: Develop stage gets 15 min (code execution can be slow);
+				// other stages keep the 10 min default.
+				timeoutMs: 15 * 60 * 1000,
 			});
 			await writeMarkdownFile(workspace.rootFiles.response, developResult.text);
 			await writeMarkdownFile(path.join(loopDir, "RESPONSE.md"), developResult.text);
 
 			// Snapshot C7: compare before/after and store diff in loopEntry
 			// C2 fix: Snapshot C7 after develop also uses cwd (project root)
-			const snapshotAfter = await takeSnapshot(cwd);
+			const snapshotAfter = await takeSnapshot(cwd, { scope: ["lib", "tests"], maxDepth: 6, maxFiles: 5000 });
 			const c7Diff: SnapshotDiff = diffSnapshots(snapshotBefore, snapshotAfter);
 			loopEntry.c7Snapshot = {
 				hasChanges: c7Diff.hasChanges,
@@ -380,7 +389,10 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				});
 			}
 
-			const evaluateResult = await runManagedStage({
+			// D5 fix: Merged evaluate+learning into a single subprocess call to eliminate
+			// one cold-start per loop. The combined prompt produces FEEDBACK.md, LEARNING.md,
+			// and BACKLOG.md in one pass, halving evaluate+learning overhead.
+			const evaluateLearningResult = await runManagedStage({
 				cwd,
 				protectedRoots: [workspace.callDir],
 				modelPattern,
@@ -391,8 +403,8 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				requestedLoops: loops,
 				completedLoops: manifest.completedLoops,
 				relativeCallDir,
-				systemPrompt: EVALUATION_SYSTEM_PROMPT,
-				userPrompt: buildEvaluationUserPrompt({
+				systemPrompt: EVALUATE_LEARNING_SYSTEM_PROMPT,
+				userPrompt: buildEvaluateLearningUserPrompt({
 					cwd,
 					workspace,
 					loopNumber,
@@ -402,45 +414,30 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
 				onEvent,
-				statusMessage: `Loop ${loopNumber}/${loops}: evaluating FEEDBACK.md`,
+				statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning`,
 				invocation,
 			});
-			await writeMarkdownFile(workspace.rootFiles.feedback, evaluateResult.text);
-			await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), evaluateResult.text);
+			// Extract all three sections from the merged output
+			const evalLearnSections = extractMarkedSections(evaluateLearningResult.text, ["FEEDBACK.md", "LEARNING.md", "BACKLOG.md"]);
+			await writeMarkdownFile(workspace.rootFiles.feedback, evalLearnSections["FEEDBACK.md"]);
+			await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), evalLearnSections["FEEDBACK.md"]);
 
-			loopEntry.score = extractOverallScore(evaluateResult.text);
+			loopEntry.score = extractOverallScore(evalLearnSections["FEEDBACK.md"]);
 			if (typeof loopEntry.score === "number") latestScore = loopEntry.score;
 
-			const learningResult = await runManagedStage({
-				cwd,
-				protectedRoots: [workspace.callDir],
-				modelPattern,
-				thinkingLevel,
-				record: loopEntry.stages.learning,
-				stageName: "learning",
-				loopNumber,
-				requestedLoops: loops,
-				completedLoops: manifest.completedLoops,
-				relativeCallDir,
-				systemPrompt: LEARNING_UPDATE_SYSTEM_PROMPT,
-				userPrompt: buildLearningUpdateUserPrompt({
-					cwd,
-					workspace,
-					loopNumber,
-					requestedLoops: loops,
-				}),
-				manifest,
-				manifestPath: workspace.rootFiles.manifest,
-				onStatus,
-				onEvent,
-				statusMessage: `Loop ${loopNumber}/${loops}: updating LEARNING.md`,
-				invocation,
-			});
-			const learningSections = extractMarkedSections(learningResult.text, ["LEARNING.md", "BACKLOG.md"]);
-			await writeMarkdownFile(workspace.rootFiles.learning, learningSections["LEARNING.md"]);
-			await writeMarkdownFile(workspace.rootFiles.backlog, learningSections["BACKLOG.md"]);
-			await writeMarkdownFile(path.join(loopDir, "LEARNING.md"), learningSections["LEARNING.md"]);
-			await writeMarkdownFile(path.join(loopDir, "BACKLOG.md"), learningSections["BACKLOG.md"]);
+			// Mark learning stage as success (derived from merged result)
+			loopEntry.stages.learning.status = "success";
+			loopEntry.stages.learning.startedAt = loopEntry.stages.evaluate.startedAt;
+			loopEntry.stages.learning.completedAt = loopEntry.stages.evaluate.completedAt;
+			loopEntry.stages.learning.exitCode = evaluateLearningResult.exitCode;
+			loopEntry.stages.learning.model = evaluateLearningResult.model;
+			loopEntry.stages.learning.stopReason = evaluateLearningResult.stopReason;
+			loopEntry.stages.learning.usage = evaluateLearningResult.usage;
+
+			await writeMarkdownFile(workspace.rootFiles.learning, evalLearnSections["LEARNING.md"]);
+			await writeMarkdownFile(workspace.rootFiles.backlog, evalLearnSections["BACKLOG.md"]);
+			await writeMarkdownFile(path.join(loopDir, "LEARNING.md"), evalLearnSections["LEARNING.md"]);
+			await writeMarkdownFile(path.join(loopDir, "BACKLOG.md"), evalLearnSections["BACKLOG.md"]);
 
 			loopEntry.completedAt = new Date().toISOString();
 			manifest.completedLoops = loopNumber;

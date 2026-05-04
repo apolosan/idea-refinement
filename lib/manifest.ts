@@ -3,6 +3,8 @@ import { toProjectRelativePath } from "./path-utils.ts";
 import type { LoopManifestEntry, StageExecutionResult, StageName, StageRecord, WorkflowManifest } from "./types.ts";
 import { writeJsonFile } from "./io.ts";
 
+export let manifestWriteCount = 0;
+
 export function createStageRecord(name: StageName, logPath: string, stderrPath: string): StageRecord {
 	return {
 		name,
@@ -133,5 +135,6 @@ export function markStageFailure(record: StageRecord, error: unknown): void {
 }
 
 export async function saveManifest(manifestPath: string, manifest: WorkflowManifest): Promise<void> {
+	manifestWriteCount++;
 	await writeJsonFile(manifestPath, manifest);
 }

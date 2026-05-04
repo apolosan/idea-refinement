@@ -3,12 +3,14 @@ import {
 	WORKFLOW_ASSUMPTIONS,
 	INITIAL_ARTIFACTS_SYSTEM_PROMPT,
 	DEVELOPMENT_SYSTEM_PROMPT,
+	EVALUATE_LEARNING_SYSTEM_PROMPT,
 	EVALUATION_SYSTEM_PROMPT,
 	LEARNING_UPDATE_SYSTEM_PROMPT,
 	REPORT_SYSTEM_PROMPT,
 	CHECKLIST_SYSTEM_PROMPT,
 	buildInitialArtifactsUserPrompt,
 	buildDevelopmentUserPrompt,
+	buildEvaluateLearningUserPrompt,
 	buildEvaluationUserPrompt,
 	buildLearningUpdateUserPrompt,
 	buildReportUserPrompt,
@@ -33,6 +35,19 @@ const mockWorkspace = {
 		manifest: "/test/docs/idea_refinement/artifacts_call_01/RUN.json",
 		report: "/test/docs/idea_refinement/artifacts_call_01/REPORT.md",
 		checklist: "/test/docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
+	},
+	relativePaths: {
+		idea: "docs/idea_refinement/artifacts_call_01/IDEA.md",
+		directive: "docs/idea_refinement/artifacts_call_01/DIRECTIVE.md",
+		learning: "docs/idea_refinement/artifacts_call_01/LEARNING.md",
+		criteria: "docs/idea_refinement/artifacts_call_01/CRITERIA.md",
+		diagnosis: "docs/idea_refinement/artifacts_call_01/DIAGNOSIS.md",
+		metrics: "docs/idea_refinement/artifacts_call_01/METRICS.md",
+		backlog: "docs/idea_refinement/artifacts_call_01/BACKLOG.md",
+		response: "docs/idea_refinement/artifacts_call_01/RESPONSE.md",
+		feedback: "docs/idea_refinement/artifacts_call_01/FEEDBACK.md",
+		report: "docs/idea_refinement/artifacts_call_01/REPORT.md",
+		checklist: "docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
 	},
 };
 
@@ -69,6 +84,13 @@ export async function run(): Promise<void> {
 	assert.match(CHECKLIST_SYSTEM_PROMPT, /actionable/i);
 	console.log("✓ CHECKLIST_SYSTEM_PROMPT contains required elements");
 
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /combined evaluation/i);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /FEEDBACK\.md/);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /LEARNING\.md/);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /BACKLOG\.md/);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /Overall score:/);
+	console.log("✓ EVALUATE_LEARNING_SYSTEM_PROMPT contains required elements");
+
 	const initialPrompt = buildInitialArtifactsUserPrompt({ cwd: "/test", workspace: mockWorkspace, randomNumber: 42, policy: "OPTIMIZATION" });
 	assert.match(initialPrompt, /42/);
 	assert.match(initialPrompt, /OPTIMIZATION/);
@@ -101,4 +123,11 @@ export async function run(): Promise<void> {
 	assert.match(checklistPrompt, /5\/5/);
 	assert.match(checklistPrompt, /CHECKLIST\.md/);
 	console.log("✓ buildChecklistUserPrompt builds correctly");
+
+	const evalLearnPrompt = buildEvaluateLearningUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 2, requestedLoops: 3 });
+	assert.match(evalLearnPrompt, /2\/3/);
+	assert.match(evalLearnPrompt, /FEEDBACK\.md/);
+	assert.match(evalLearnPrompt, /LEARNING\.md/);
+	assert.match(evalLearnPrompt, /BACKLOG\.md/);
+	console.log("✓ buildEvaluateLearningUserPrompt builds correctly");
 }
