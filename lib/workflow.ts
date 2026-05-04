@@ -264,47 +264,56 @@ export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promis
 		manifest.directivePolicy = directivePolicy;
 		await saveManifest(workspace.rootFiles.manifest, manifest);
 
-		const bootstrapResult = await runManagedStage({
-			cwd,
-			protectedRoots: [workspace.callDir],
-			modelPattern,
-			thinkingLevel,
-			record: manifest.bootstrap,
-			stageName: "bootstrap",
-			requestedLoops: loops,
-			completedLoops: manifest.completedLoops,
-			relativeCallDir,
-			systemPrompt: INITIAL_ARTIFACTS_SYSTEM_PROMPT,
-			userPrompt: buildInitialArtifactsUserPrompt({
-				cwd,
-				workspace,
-				randomNumber: initialRandomNumber,
-				policy: directivePolicy,
-			}),
-			manifest,
-			manifestPath: workspace.rootFiles.manifest,
-			onStatus,
-			onEvent,
-			statusMessage: `Generating initial artifacts in ${relativeCallDir}`,
-			invocation,
-		});
+		// Retry logic for bootstrap stage: the LLM may fail to produce proper markers
+		const BOOTSTRAP_MAX_RETRIES = 3;
+		const BOOTSTRAP_REQUIRED_FILES = ["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"];
+		let sections: Record<string, string> | undefined;
+		let lastBootstrapError: Error | undefined;
 
-		let sections: Record<string, string>;
-		try {
-			sections = extractMarkedSections(bootstrapResult.text, [
-				"DIRECTIVE.md",
-				"LEARNING.md",
-				"CRITERIA.md",
-				"DIAGNOSIS.md",
-				"METRICS.md",
-				"BACKLOG.md",
-			]);
-		} catch (parseError) {
-			const rawPath = path.join(workspace.callDir, "bootstrap-raw.md");
-			await writeMarkdownFile(rawPath, bootstrapResult.text);
-			throw new Error(
-				`Failed to extract bootstrap sections; raw text preserved at ${rawPath}. Cause: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-			);
+		for (let attempt = 1; attempt <= BOOTSTRAP_MAX_RETRIES; attempt++) {
+			const bootstrapResult = await runManagedStage({
+				cwd,
+				protectedRoots: [workspace.callDir],
+				modelPattern,
+				thinkingLevel,
+				record: manifest.bootstrap,
+				stageName: "bootstrap",
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+				relativeCallDir,
+				systemPrompt: INITIAL_ARTIFACTS_SYSTEM_PROMPT,
+				userPrompt: buildInitialArtifactsUserPrompt({
+					cwd,
+					workspace,
+					randomNumber: initialRandomNumber,
+					policy: directivePolicy,
+				}),
+				manifest,
+				manifestPath: workspace.rootFiles.manifest,
+				onStatus,
+				onEvent,
+				statusMessage: `Generating initial artifacts in ${relativeCallDir}${attempt > 1 ? ` (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})` : ""}`,
+				invocation,
+			});
+
+			try {
+				sections = extractMarkedSections(bootstrapResult.text, BOOTSTRAP_REQUIRED_FILES);
+				break; // Success — exit retry loop
+			} catch (parseError) {
+				lastBootstrapError = parseError instanceof Error ? parseError : new Error(String(parseError));
+				const rawPath = path.join(workspace.callDir, `bootstrap-raw-attempt-${attempt}.md`);
+				await writeMarkdownFile(rawPath, bootstrapResult.text);
+				onStatus?.(`⚠ Bootstrap attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES} failed: ${lastBootstrapError.message}`);
+				if (attempt === BOOTSTRAP_MAX_RETRIES) {
+					throw new Error(
+						`Failed to extract bootstrap sections after ${BOOTSTRAP_MAX_RETRIES} attempts; last raw text at ${rawPath}. Cause: ${lastBootstrapError.message}`,
+					);
+				}
+			}
+		}
+
+		if (!sections) {
+			throw new Error(`Bootstrap extraction failed unexpectedly. Last error: ${lastBootstrapError?.message}`);
 		}
 		await writeMarkdownFile(workspace.rootFiles.directive, sections["DIRECTIVE.md"]);
 		await writeMarkdownFile(workspace.rootFiles.learning, sections["LEARNING.md"]);
