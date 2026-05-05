@@ -7,6 +7,7 @@ export const WORKFLOW_ASSUMPTIONS = [
 	"The extension reuses the active session model for all workflow stages.",
 	"Each call generates an independent directory under docs/idea_refinement/artifacts_call_NN/.",
 	"Agents return content; final artifact persistence is done exclusively by extension code.",
+	"Invoked agents operate under read-only project constraints; they must not edit project source files.",
 	"Each loop's random number is forwarded to the development agent as a contextual seed, without overwriting DIRECTIVE.md.",
 	"The initial directive remains immutable throughout the call execution.",
 	"The workflow must favor observable, comparable, auditable, and actionable improvement, avoiding pseudo-rigor and ornamental bureaucracy.",
@@ -74,12 +75,13 @@ export const DEVELOPMENT_SYSTEM_PROMPT = `You are the agent responsible for the 
 Your objective is to generate ONLY the complete content of RESPONSE.md.
 
 Mandatory rules:
-- MANDATORY WRITE ORDER: You MUST execute ALL PENDING changes from BACKLOG.md (extension source code) BEFORE writing RESPONSE.md. Use grep, wc -l, test -f to materially verify each execution before declaring [EXECUTED]. If 0 material changes are executed, C7 = 0/10.
 - Read the files indicated in the prompt before formulating the response.
 - Follow DIRECTIVE.md rigorously and without exception.
 - Use LEARNING.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, and CRITERIA.md as support base, context, and accumulated memory.
+- Project source code edits are NOT allowed in this workflow. Treat the repository as read-only for analysis.
+- Tool usage is intentionally restricted: prefer read; if shell inspection is needed, use only directory inspection commands (ls/tree) exposed by the environment.
 - DO NOT try to edit or rewrite DIRECTIVE.md, LEARNING.md, CRITERIA.md, DIAGNOSIS.md, METRICS.md, BACKLOG.md, RESPONSE.md, or FEEDBACK.md.
-- You may use the resources and tools available in the project environment when relevant to deepen the idea.
+- You may use the available read-only resources to deepen the idea.
 - Before any external research, state short and specific operational questions.
 - Limit the loop to 1–2 main lenses to reduce dispersion.
 - Work with 2–4 truly distinct alternatives per theme. Do not propose cosmetic alternatives or superficial reformulations.
@@ -103,70 +105,9 @@ Minimum desired structure for RESPONSE.md:
 ## Explicit discards of this iteration
 ## Next focuses`;
 
-export const EVALUATION_SYSTEM_PROMPT = `You are the critical evaluation stage agent of the workflow.
 
-Your objective is to generate ONLY the complete content of FEEDBACK.md.
 
-Mandatory rules:
-- Read CRITERIA.md, RESPONSE.md, DIAGNOSIS.md, METRICS.md, and BACKLOG.md before evaluating.
-- Be highly critical, rigorous, specific, and evidence-oriented.
-- Avoid vague praise. Every conclusion must be sustained by the criteria.
-- Do not rewrite RESPONSE.md; evaluate it.
-- Verify whether conclusions really derive from the registered evidence.
-- Explicitly point out pseudo-rigor, empty scores, ornamental matrices, ornamental benchmarks, rubrics without decision, and broad claims without verifiable base.
-- Evaluate the before/after comparison with the minimum criteria: clarity, depth, distinction between alternatives, actionability, and operational cost.
-- Formalize the final iteration decision as: keep, adjust, discard, or test later.
-- Include the exact line: Overall score: NN/100
-- The value NN must be an integer between 1 and 100.
-- Present the score on 2 additional axes beyond the total:
-  - **Process Rigor** (C8 + C9 + C10): score from 0 to 100 representing the quality of the analytical process.
-  - **Material Result** (C1 + C4 + C6 + C7): score from 0 to 100 representing the quality of concrete deliverables.
-  - The "Material Result" axis MUST have weight ≥ 60% in the final score.
-  - Include the lines: Process Rigor score: NN/100 and Material Result score: NN/100
-- Write in English.
-- Do not include explanations outside the final document.
 
-Minimum desired structure for FEEDBACK.md:
-# Feedback
-## Overall verdict
-## Evidence supporting the verdict
-## Before/after comparability evaluation
-## Epistemic audit
-## Criterion-by-criterion evaluation
-## Final iteration decision
-## Objective recommendations for the next iteration
-## Scoreboard`;
-
-export const LEARNING_UPDATE_SYSTEM_PROMPT = `You are the curator agent of the workflow's learning base.
-
-Your objective is to generate the COMPLETE and updated content of EXACTLY two Markdown files:
-1. LEARNING.md
-2. BACKLOG.md
-
-Mandatory rules:
-- Read current LEARNING.md, current BACKLOG.md, RESPONSE.md, and FEEDBACK.md before editing.
-- Preserve the useful existing structure whenever possible, but prefer to consolidate rather than expand.
-- Incorporate learnings, insights, references, gaps, and actionable directions from the response and feedback.
-- Eliminate redundancies, historical repetitions, and long examples when the learning can already be preserved in summarized form.
-- Keep LEARNING.md short enough for quick consultation; prioritize information density and operational memory, not exhaustive history.
-- Update BACKLOG.md as a unique, governable list, reflecting keep, adjust, discard, or test later.
-- Preserve only what still has operational value for the next loops: active hypotheses, provisional decisions, priorities, risks, gaps, metrics, experiments, and next focuses.
-- Do not change the project focus or rewrite the directive.
-- Write in English.
-- Do not include explanations outside the final document.
-
-Quality criteria:
-- LEARNING.md organized, navigable, cumulative, and compact;
-- BACKLOG.md without duplication, with priority, status, dependencies, and revision criterion;
-- explicit discard of what will not be adopted now.
-
-Mandatory output contract:
-<<<BEGIN FILE: LEARNING.md>>>
-...full content...
-<<<END FILE: LEARNING.md>>>
-<<<BEGIN FILE: BACKLOG.md>>>
-...full content...
-<<<END FILE: BACKLOG.md>>>`;
 
 /**
  * Merged evaluate + learning system prompt.
@@ -314,49 +255,6 @@ export function buildDevelopmentUserPrompt(options: {
 		`- ${rp.backlog}`,
 		"Respond objectively, comparably, evidence-oriented, and without unnecessary redundancies.",
 		"Return only the complete content of RESPONSE.md.",
-	].join("\n");
-}
-
-export function buildEvaluationUserPrompt(options: {
-	cwd: string;
-	workspace: CallWorkspace;
-	loopNumber: number;
-	requestedLoops: number;
-}): string {
-	const { workspace, loopNumber, requestedLoops } = options;
-	const rp = workspace.relativePaths;
-	return [
-		"Current stage: critical evaluation of the response for FEEDBACK.md.",
-		`Evaluated loop: ${loopNumber}/${requestedLoops}`,
-		"Read these files before responding:",
-		`- ${rp.criteria}`,
-		`- ${rp.diagnosis}`,
-		`- ${rp.metrics}`,
-		`- ${rp.backlog}`,
-		`- ${rp.response}`,
-		"Return only the complete content of FEEDBACK.md.",
-	].join("\n");
-}
-
-export function buildLearningUpdateUserPrompt(options: {
-	cwd: string;
-	workspace: CallWorkspace;
-	loopNumber: number;
-	requestedLoops: number;
-}): string {
-	const { workspace, loopNumber, requestedLoops } = options;
-	const rp = workspace.relativePaths;
-	return [
-		"Current stage: cumulative and compact update of LEARNING.md and BACKLOG.md.",
-		`Completed loop: ${loopNumber}/${requestedLoops}`,
-		"Read these files before responding:",
-		`- ${rp.idea}`,
-		`- ${rp.learning}`,
-		`- ${rp.backlog}`,
-		`- ${rp.response}`,
-		`- ${rp.feedback}`,
-		"Update the documents preserving only operational memory and high-value backlog, without duplication.",
-		"Return only the complete updated content of LEARNING.md and BACKLOG.md.",
 	].join("\n");
 }
 

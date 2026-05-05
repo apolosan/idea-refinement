@@ -55,15 +55,17 @@ With the `/idea-refine` command, the extension:
    - `BACKLOG.md`
 4. executes, for each loop:
    - idea development → `RESPONSE.md`
-   - critical evaluation → `FEEDBACK.md`
-   - cumulative learning update → `LEARNING.md`
-5. stores everything in an isolated directory per invocation;
-6. displays real-time workflow progress through multiple persistent UI channels:
-   - console/chat notifications for start, stage transitions, loop completion, and failures;
+   - combined critical evaluation + learning update → `FEEDBACK.md`, `LEARNING.md`, `BACKLOG.md`
+5. after all loops, consolidates → `REPORT.md` and `CHECKLIST.md`
+6. stores everything in an isolated directory per invocation;
+7. displays real-time workflow progress through multiple persistent UI channels:
+   - console/chat notifications for start, stage transitions, loop completion, pause/resume, stop, and failures;
    - current loop and total loops;
    - textual loop progress bar;
    - current workflow stage;
-   - active tool being executed.
+   - active tool being executed;
+   - total elapsed time;
+   - animated status spinner maintained by the extension itself.
 
 ## How to Use
 
@@ -81,15 +83,29 @@ Or, for a short idea:
 
 After that, the extension will ask for the number of loops.
 
+### Runtime shortcuts
+
+While a workflow is running:
+
+- `Ctrl+Alt+P` → pause / resume the workflow
+- `Ctrl+Alt+X` → stop the workflow
+
+Equivalent commands are also available:
+
+- `/idea-refine-pause`
+- `/idea-refine-stop`
+
 ## Real-Time Monitor
 
 During execution, the extension:
 
-- publishes important events to the Pi console/chat (`workflow_started`, stage start/end, loop completion, failures);
+- publishes important events to the Pi console/chat (`workflow_started`, stage start/end, loop completion, pause/resume, stop, failures);
 - updates a summarized `status` in the footer/working message;
 - keeps a persistent widget with a checklist of bootstrap, development, evaluation, and learning stages;
 - displays the `current tool` in use by the invoked subprocess;
-- shows a textual progress bar of completed loops.
+- shows a textual progress bar of completed loops;
+- shows total elapsed runtime;
+- maintains an animated spinner in the extension status/widget even while subprocess agents are working.
 
 These messages are emitted through distinct Pi UI channels (`setStatus`, `setWidget`, `setWorkingMessage`, and `notify`) so that status information remains visible and is not pruned by the agent interface.
 
@@ -124,12 +140,14 @@ docs/idea_refinement/artifacts_call_NN/
 │   ├── bootstrap.jsonl
 │   ├── loop_01_develop.jsonl
 │   ├── loop_01_evaluate.jsonl
-│   └── loop_01_learning.jsonl
+│   ├── report.jsonl
+│   └── checklist.jsonl
 └── loops/
     ├── loop_01/
     │   ├── RESPONSE.md
     │   ├── FEEDBACK.md
-    │   └── LEARNING.md
+    │   ├── LEARNING.md
+    │   └── BACKLOG.md
     └── loop_02/
         └── ...
 ```
@@ -140,18 +158,20 @@ The extension does not rely on the current agent to orchestrate the process.
 
 It itself:
 
-- generates non-deterministic random numbers via Mersenne Twister + cryptographic entropy to guide the workflow;
+- generates non-deterministic random numbers via Web Crypto API (CSPRNG with rejection sampling) to guide the workflow;
 - spawns its own `pi` subprocesses in sequence;
 - injects stage-specific system prompts;
 - captures the final text of each subprocess;
 - writes artifacts by code;
-- updates `run.json` throughout execution.
+- updates `run.json` throughout execution;
+- enforces inactivity timeouts instead of absolute stage deadlines;
+- allows pause/resume and stop control for the whole workflow.
 
 ## Environment Variable
 
 ### `PI_IDEA_REFINEMENT_PROTECTED_ROOTS`
 
-This environment variable is used internally by the extension to protect artifact directories from writes during workflow execution. The `artifact-guard.ts` blocks `write` and `edit` operations on protected paths until the workflow reaches a terminal state (`success` or `failed`).
+This environment variable is used internally by the extension to protect artifact directories from writes during workflow execution. The `artifact-guard.ts` blocks `write` and `edit` operations on protected paths until the workflow reaches a terminal state (`success` or `failed`). It also constrains subprocess agents to a restricted tool set.
 
 **No manual configuration is required** — the extension sets it automatically when starting each subprocess.
 
@@ -159,7 +179,7 @@ This environment variable is used internally by the extension to protect artifac
 
 - `DIRECTIVE.md` is created once and never overwritten.
 - `DIAGNOSIS.md`, `METRICS.md`, and `BACKLOG.md` make refinement more observable, comparable, and auditable.
-- Each stage subprocess receives an auxiliary extension (`artifact-guard.ts`) that blocks `write` and `edit` on the artifact directory.
+- Each stage subprocess receives an auxiliary extension (`artifact-guard.ts`) that blocks direct `write`, restricts `bash` to `ls`/`tree`, and only allows `edit` within `docs/idea_refinement/`.
 - Final artifact content is persisted only by the main extension.
 - Each loop keeps its own snapshots in `loops/loop_NN/`.
 
@@ -168,6 +188,9 @@ This environment variable is used internally by the extension to protect artifac
 - The active session model is reused across all stages.
 - The active session thinking level is also propagated to workflow subprocesses.
 - The real-time monitor is fed by structured events (`message_update`, `tool_execution_start`, `tool_execution_end`) emitted by each `pi --mode json` subprocess.
+- Status animation is driven by the parent extension with its own heartbeat instead of depending only on Pi's default working indicator.
+- Stage execution uses inactivity timeouts (default 5 minutes) rather than absolute wall-clock deadlines.
+- Subprocess agents operate in read-only mode for the project source and can only inspect directories via `bash ls` / `bash tree`.
 - The initial random number only defines the primary active policy in `DIRECTIVE.md`:
   - `1-80` → `OPTIMIZATION`
   - `81-100` → `CREATIVITY/EXPLORATION`
@@ -189,7 +212,10 @@ Tests cover:
 - next `artifacts_call_NN` detection;
 - initial artifact marker parsing and `LEARNING.md` + `BACKLOG.md` update parsing;
 - `Overall score` extraction;
-- artifact path protection;
+- artifact path protection and subprocess tool restrictions;
+- inactivity timeout handling;
+- pause/resume/stop runtime control;
+- elapsed time and animated monitor rendering;
 - thinking level propagation to subprocesses;
 - execution and thinking monitor in real time;
 - smoke import of the main extension.

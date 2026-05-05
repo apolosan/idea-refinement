@@ -5,6 +5,10 @@ import { writeJsonFile } from "./io.ts";
 
 export let manifestWriteCount = 0;
 
+export function resetManifestWriteCount(): void {
+	manifestWriteCount = 0;
+}
+
 export function createStageRecord(name: StageName, logPath: string, stderrPath: string): StageRecord {
 	return {
 		name,

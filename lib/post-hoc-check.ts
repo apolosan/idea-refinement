@@ -1,13 +1,12 @@
 /**
- * post-hoc-check.ts — SHA256 snapshot of the source-code directory
+ * post-hoc-check.ts — SHA256 snapshot of selected workflow files
  *
- * Purpose: Detect whether a "develop" loop actually changed .ts files
- * in the extension directory, providing material evidence of execution
- * vs. pseudo-execution.
+ * Purpose: detect whether a stage materially changed the files it is expected
+ * to affect, providing auditable evidence of execution.
  *
  * Mechanism:
- * 1. Before develop: take SHA256 snapshot of all .ts files in the directory
- * 2. After develop: take a new snapshot and compare
+ * 1. Before stage: take SHA256 snapshot of matching files in the directory
+ * 2. After stage: take a new snapshot and compare
  * 3. Returns list of changed files (or empty if none)
  *
  * This feeds criterion C7 (Material Execution) of FEEDBACK.md.
@@ -32,16 +31,20 @@ export interface TakeSnapshotOptions {
 	scope?: string[];
 	maxDepth?: number;
 	maxFiles?: number;
+	fileExtensions?: string[];
+	ignoreDirs?: string[];
 }
 
 /**
- * Takes a SHA256 snapshot of .ts files in the extension root directory.
+ * Takes a SHA256 snapshot of matching files in the target directory.
  * Returns a map of relative path → hash.
  * If the directory does not exist, returns an empty object.
  */
 export async function takeSnapshot(extensionRoot: string, options?: TakeSnapshotOptions): Promise<FileSnapshot> {
 	const snapshot: FileSnapshot = {};
-	const { scope, maxDepth = Infinity, maxFiles = Infinity } = options ?? {};
+	const { scope, maxDepth = Infinity, maxFiles = Infinity, fileExtensions = [".ts"], ignoreDirs = [] } = options ?? {};
+	const allowedExtensions = new Set(fileExtensions);
+	const ignoredDirectories = new Set(["node_modules", ...ignoreDirs]);
 
 	try {
 		await fs.access(extensionRoot);
@@ -76,9 +79,9 @@ export async function takeSnapshot(extensionRoot: string, options?: TakeSnapshot
 				return;
 			}
 			const fullPath = path.join(dir, entry.name);
-			if (entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith(".")) {
+			if (entry.isDirectory() && !ignoredDirectories.has(entry.name) && !entry.name.startsWith(".")) {
 				await walkDir(fullPath, depth + 1);
-			} else if (entry.isFile() && entry.name.endsWith(".ts")) {
+			} else if (entry.isFile() && allowedExtensions.has(path.extname(entry.name))) {
 				const relPath = path.relative(extensionRoot, fullPath);
 				try {
 					const content = await fs.readFile(fullPath, "utf-8");
@@ -154,7 +157,7 @@ export function formatSnapshotDiff(diff: SnapshotDiff): string {
 	}
 
 	if (parts.length === 0) {
-		return "No material changes detected in source code.";
+		return "No material changes detected.";
 	}
 
 	return parts.join("; ");

@@ -16,94 +16,107 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 
 function createMockPi() {
 	const handlers: Array<{ event: string; handler: Function }> = [];
+	const activeTools: string[][] = [];
 	return {
 		on: (event: string, handler: Function) => {
 			handlers.push({ event, handler });
 		},
+		setActiveTools: (toolNames: string[]) => {
+			activeTools.push(toolNames);
+		},
 		handlers,
+		activeTools,
 		getToolCallHandler() {
 			return handlers.find((h) => h.event === "tool_call")?.handler;
+		},
+		getSessionStartHandler() {
+			return handlers.find((h) => h.event === "session_start")?.handler;
 		},
 	};
 }
 
 export async function run(): Promise<void> {
 	await withTempDir(async (dir) => {
-		process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS = JSON.stringify([path.join(dir, "protected")]);
+		const protectedRoot = path.join(dir, "docs", "idea_refinement", "artifacts_call_01");
+		const historicalArtifact = path.join(dir, "docs", "idea_refinement", "artifacts_call_00", "REPORT.md");
+		process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS = JSON.stringify([protectedRoot]);
+		mkdirSync(protectedRoot, { recursive: true });
+		mkdirSync(path.dirname(historicalArtifact), { recursive: true });
+		writeFileSync(path.join(protectedRoot, "run.json"), JSON.stringify({ status: "running" }), "utf-8");
+		writeFileSync(historicalArtifact, "# old report", "utf-8");
+
 		const pi = createMockPi();
 		artifactGuardExtension(pi as any);
 		const handler = pi.getToolCallHandler();
+		const onSessionStart = pi.getSessionStartHandler();
 		assert.ok(handler, "artifact guard must register tool_call handler");
+		assert.ok(onSessionStart, "artifact guard must register session_start handler");
 
-		// write to protected path during workflow running
-		mkdirSync(path.join(dir, "protected"), { recursive: true });
-		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "running" }), "utf-8");
-		const blockResult = await handler!(
-			{ type: "tool_call", toolName: "write", input: { path: path.join(dir, "protected", "file.ts"), content: "x" } },
+		await onSessionStart!({}, { cwd: dir });
+		assert.deepEqual(pi.activeTools[0], ["read", "bash", "edit"]);
+		console.log("✓ artifact-guard constrains subprocess tools to read/bash/edit");
+
+		const writeResult = await handler!(
+			{ type: "tool_call", toolName: "write", input: { path: path.join(protectedRoot, "file.ts"), content: "x" } },
 			{ cwd: dir },
 		);
-		assert.equal(blockResult?.block, true);
-		assert.match(blockResult?.reason, /protected/);
-		console.log("✓ artifact-guard blocks write during workflow running");
+		assert.equal(writeResult?.block, true);
+		assert.match(writeResult?.reason, /Direct write is disabled/);
+		console.log("✓ artifact-guard blocks write for subprocess agents");
 
-		// write to protected path when workflow completed
-		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "success" }), "utf-8");
-		const allowResult = await handler!(
-			{ type: "tool_call", toolName: "write", input: { path: path.join(dir, "protected", "file.ts"), content: "x" } },
+		const bashAllowed = await handler!(
+			{ type: "tool_call", toolName: "bash", input: { command: "ls docs/idea_refinement" } },
 			{ cwd: dir },
 		);
-		assert.equal(allowResult, undefined); // does not block
-		console.log("✓ artifact-guard allows write when workflow completed");
+		assert.equal(bashAllowed, undefined);
 
-		// edit to protected path during workflow failed
-		writeFileSync(path.join(dir, "protected", "run.json"), JSON.stringify({ status: "failed" }), "utf-8");
-		const failedAllowResult = await handler!(
-			{ type: "tool_call", toolName: "edit", input: { path: path.join(dir, "protected", "file.ts"), oldText: "a", newText: "b" } },
+		const bashBlocked = await handler!(
+			{ type: "tool_call", toolName: "bash", input: { command: "find . -type f" } },
 			{ cwd: dir },
 		);
-		assert.equal(failedAllowResult, undefined);
-		console.log("✓ artifact-guard allows write when workflow failed");
+		assert.equal(bashBlocked?.block, true);
+		assert.match(bashBlocked?.reason, /ls or tree/);
+		console.log("✓ artifact-guard restricts bash to ls/tree");
 
-		// path outside protected roots
-		const outsideResult = await handler!(
-			{ type: "tool_call", toolName: "write", input: { path: path.join(dir, "outside", "file.ts"), content: "x" } },
+		const outsideEdit = await handler!(
+			{ type: "tool_call", toolName: "edit", input: { path: path.join(dir, "index.ts"), oldText: "a", newText: "b" } },
 			{ cwd: dir },
 		);
-		assert.equal(outsideResult, undefined);
-		console.log("✓ artifact-guard does not interfere with external paths");
+		assert.equal(outsideEdit?.block, true);
+		assert.match(outsideEdit?.reason, /restricted to idea-refinement artifacts/);
+		console.log("✓ artifact-guard blocks edit outside docs/idea_refinement");
 
-		// R1 fix: Test that terminal state of one root does NOT unlock another root
-		const rootA = path.join(dir, "rootA");
-		const rootB = path.join(dir, "rootB");
-		mkdirSync(rootA, { recursive: true });
-		mkdirSync(rootB, { recursive: true });
-		writeFileSync(path.join(rootA, "run.json"), JSON.stringify({ status: "success" }), "utf-8");
-		writeFileSync(path.join(rootB, "run.json"), JSON.stringify({ status: "running" }), "utf-8");
-		process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS = JSON.stringify([rootA, rootB]);
-		const pi3 = createMockPi();
-		artifactGuardExtension(pi3 as any);
-		const handler3 = pi3.getToolCallHandler();
-
-		// RootA is terminal, so writes to rootA should be allowed
-		const allowA = await handler3!(
-			{ type: "tool_call", toolName: "write", input: { path: path.join(rootA, "file.ts"), content: "x" } },
+		const runningRootEdit = await handler!(
+			{ type: "tool_call", toolName: "edit", input: { path: path.join(protectedRoot, "RESPONSE.md"), oldText: "a", newText: "b" } },
 			{ cwd: dir },
 		);
-		assert.equal(allowA, undefined);
+		assert.equal(runningRootEdit?.block, true);
+		assert.match(runningRootEdit?.reason, /protected by the idea refinement workflow/);
+		console.log("✓ artifact-guard blocks edit inside active protected root");
 
-		// RootB is still running, so writes to rootB should be blocked even though rootA is terminal
-		const blockB = await handler3!(
-			{ type: "tool_call", toolName: "write", input: { path: path.join(rootB, "file.ts"), content: "x" } },
+		const historicalEdit = await handler!(
+			{ type: "tool_call", toolName: "edit", input: { path: historicalArtifact, oldText: "old", newText: "new" } },
 			{ cwd: dir },
 		);
-		assert.equal(blockB?.block, true);
-		console.log("✓ artifact-guard R1: terminal state of one root does not unlock another");
+		assert.equal(historicalEdit, undefined);
+		console.log("✓ artifact-guard allows edit inside docs/idea_refinement outside protected root");
 
-		// no environment variable
+		const unknownTool = await handler!(
+			{ type: "tool_call", toolName: "grep", input: { pattern: "x", path: dir } },
+			{ cwd: dir },
+		);
+		assert.equal(unknownTool?.block, true);
+		assert.match(unknownTool?.reason, /disabled/);
+		console.log("✓ artifact-guard blocks tools outside the allowlist");
+
 		delete process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS;
-		const pi2 = createMockPi();
-		artifactGuardExtension(pi2 as any);
-		assert.equal(pi2.handlers.length, 0);
-		console.log("✓ artifact-guard does not register handler when there are no protected roots");
+	});
+
+	await withTempDir(async (dir) => {
+		delete process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS;
+		const pi = createMockPi();
+		artifactGuardExtension(pi as any);
+		assert.equal(pi.handlers.length, 0);
+		console.log("✓ artifact-guard does not register handlers when there are no protected roots");
 	});
 }

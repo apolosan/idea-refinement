@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { PROTECTED_ROOTS_ENV } from "./path-guards.ts";
 import type { PiStageStreamEvent, StageExecutionResult, StageUsage } from "./types.ts";
 import { normalizeMarkdown } from "./io.ts";
+import type { ControlledStageProcessHandle, WorkflowRuntimeControl } from "./workflow-runtime-control.ts";
 const STDERR_TAIL_LIMIT = 32_768;
 
 /**
@@ -109,6 +110,7 @@ function summarizeAssistantMessage(message: PiMessage): AssistantMessageSummary 
 
 async function writeTempSystemPrompt(systemPrompt: string): Promise<{ dir: string; filePath: string }> {
 	const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "pi-idea-refinement-"));
+	await fsp.chmod(tempDir, 0o700);
 	const filePath = path.join(tempDir, "system-prompt.md");
 	await fsp.writeFile(filePath, systemPrompt, "utf8");
 	return { dir: tempDir, filePath };
@@ -232,8 +234,12 @@ export interface RunPiStageOptions {
 	protectedRoots: string[];
 	onProgress?: (message: string) => void;
 	onEvent?: (event: PiStageStreamEvent) => void;
-	/** D3 fix: Timeout in ms. Default: 10 minutes. Set to 0 to disable. */
+	/**
+	 * Inactivity timeout in ms. Reset whenever the subprocess emits agent/tool progress.
+	 * Default: 5 minutes. Set to 0 to disable.
+	 */
 	timeoutMs?: number;
+	runtimeControl?: WorkflowRuntimeControl;
 	/**
 	 * Override the subprocess invocation.
 	 * `command`: the executable to run.
@@ -247,9 +253,9 @@ export interface RunPiStageOptions {
 }
 
 export async function runPiStage(options: RunPiStageOptions): Promise<StageExecutionResult> {
-	const { cwd, model, thinkingLevel, systemPrompt, userPrompt, logPath, stderrPath, protectedRoots, onProgress, onEvent } = options;
-	// D3 fix: Default timeout of 10 minutes. Set to 0 to disable.
-	const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+	const { cwd, model, thinkingLevel, systemPrompt, userPrompt, logPath, stderrPath, protectedRoots, onProgress, onEvent, runtimeControl } = options;
+	// Inactivity timeout only. Reset on meaningful subprocess progress.
+	const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
 	const usage = zeroUsage();
 	let lastAssistant: AssistantMessageSummary = {};
 	let stderrTail = "";
@@ -288,6 +294,8 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			? { command: options.invocation.command, args: [...(options.invocation.args ?? []), ...args] }
 			: getPiInvocation(args);
 
+		runtimeControl?.ensureNotStopped();
+
 		const exitCode = await new Promise<number>((resolve, reject) => {
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd,
@@ -299,14 +307,65 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				},
 			});
 
-			// D3 fix: Timeout handling
 			let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
-			if (timeoutMs > 0) {
+			let timeoutError: Error | undefined;
+			let stopKillTimer: ReturnType<typeof setTimeout> | undefined;
+			let isPaused = false;
+			let procStopped = false;
+
+			const stopProcess = (signal: NodeJS.Signals = "SIGTERM") => {
+				if (procStopped) return;
+				procStopped = true;
+				try { proc.kill(signal); } catch {}
+				if (signal !== "SIGKILL") {
+					stopKillTimer = setTimeout(() => {
+						try { proc.kill("SIGKILL"); } catch {}
+					}, 2000);
+				}
+			};
+
+			const clearInactivityTimer = () => {
+				if (timeoutTimer) {
+					clearTimeout(timeoutTimer);
+					timeoutTimer = undefined;
+				}
+			};
+
+			const resetInactivityTimer = () => {
+				if (timeoutMs <= 0 || isPaused) return;
+				clearInactivityTimer();
 				timeoutTimer = setTimeout(() => {
-					try { proc.kill("SIGTERM"); } catch {}
-					reject(new Error(`Stage timed out after ${timeoutMs}ms`));
+					timeoutError = new Error(`Stage inactive for ${timeoutMs}ms`);
+					stopProcess("SIGTERM");
+					reject(timeoutError);
 				}, timeoutMs);
+			};
+
+			const stageHandle: ControlledStageProcessHandle = {
+				pause: () => {
+					if (isPaused) return;
+					isPaused = true;
+					clearInactivityTimer();
+					try { proc.kill("SIGSTOP"); } catch {}
+				},
+				resume: () => {
+					if (!isPaused) return;
+					isPaused = false;
+					try { proc.kill("SIGCONT"); } catch {}
+					resetInactivityTimer();
+				},
+				stop: () => {
+					clearInactivityTimer();
+					stopProcess("SIGTERM");
+				},
+			};
+
+			runtimeControl?.attachProcess(stageHandle);
+			if (runtimeControl?.isStopRequested()) {
+				stageHandle.stop(runtimeControl.getStopReason());
 			}
+
+			resetInactivityTimer();
 
 			// D4 fix: Propagate SIGTERM/SIGINT to subprocess
 			const onParentSignal = () => {
@@ -316,9 +375,11 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			process.once("SIGINT", onParentSignal);
 
 			const cleanup = () => {
-				if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = undefined; }
+				clearInactivityTimer();
+				if (stopKillTimer) { clearTimeout(stopKillTimer); stopKillTimer = undefined; }
 				process.off("SIGTERM", onParentSignal);
 				process.off("SIGINT", onParentSignal);
+				runtimeControl?.detachProcess(stageHandle);
 			};
 
 			const stdoutDecoder = new StringDecoder("utf8");
@@ -333,6 +394,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			const processLine = (line: string) => {
 				if (line.length === 0) return;
 
+				resetInactivityTimer();
 				const parsed = safeParseJson(line);
 				if (!isPiEvent(parsed)) return;
 
@@ -390,6 +452,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			};
 
 			proc.stdout.on("data", (chunk) => {
+				resetInactivityTimer();
 				buffer += stdoutDecoder.write(chunk);
 				const lines = buffer.split("\n");
 				buffer = lines.pop() ?? "";
@@ -400,11 +463,12 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			});
 
 			proc.stderr.on("data", (chunk) => {
+				resetInactivityTimer();
 				stderrLogStream.write(chunk);
 				stderrTail = appendTail(stderrTail, stderrDecoder.write(chunk), STDERR_TAIL_LIMIT);
 			});
 
-			proc.on("error", (error) => { cleanup(); reject(error); });
+			proc.on("error", (error) => { cleanup(); reject(timeoutError ?? error); });
 			proc.on("close", (code) => {
 				cleanup();
 				buffer += stdoutDecoder.end();
@@ -414,12 +478,20 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 					processLine(finalLine);
 				}
 				stderrTail = appendTail(stderrTail, stderrDecoder.end(), STDERR_TAIL_LIMIT);
+				if (timeoutError) {
+					reject(timeoutError);
+					return;
+				}
 				// E4 fix: exitCode === null (SIGKILL/OOM) must be treated as failure
 				resolve(code === null ? 1 : code);
 			});
 		});
 
 		await Promise.all([finalizeWriteStream(stdoutLogStream), finalizeWriteStream(stderrLogStream)]);
+
+		if (runtimeControl?.isStopRequested()) {
+			throw new Error(runtimeControl.getStopReason());
+		}
 
 		const normalizedText = lastAssistant.text ? normalizeMarkdown(lastAssistant.text) : "";
 		const isFailure = exitCode !== 0 || lastAssistant.stopReason === "error" || lastAssistant.stopReason === "aborted";
@@ -445,19 +517,20 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 	} finally {
 		try {
 			await Promise.all([finalizeWriteStream(stdoutLogStream), finalizeWriteStream(stderrLogStream)]);
-		} catch {
+		} catch (streamError) {
+			console.debug("[idea-refinement] stream finalization cleanup error:", streamError);
 			stdoutLogStream.destroy();
 			stderrLogStream.destroy();
 		}
 		try {
 			await fsp.unlink(tempPrompt.filePath);
-		} catch {
-			// Ignore cleanup errors.
+		} catch (unlinkError) {
+			console.debug("[idea-refinement] temp prompt cleanup error:", unlinkError);
 		}
 		try {
 			await fsp.rmdir(tempPrompt.dir);
-		} catch {
-			// Ignore cleanup errors.
+		} catch (rmdirError) {
+			console.debug("[idea-refinement] temp dir cleanup error:", rmdirError);
 		}
 	}
 }

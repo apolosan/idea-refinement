@@ -7,18 +7,22 @@
  * Delegates to the unified validateResponse with strictness='full'.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { access, readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { validateResponse } from "./response-validator.ts";
 
 export async function runResponseValidatorCheck(responsePath: string): Promise<void> {
-	if (!existsSync(responsePath)) return;
+	try {
+		await access(responsePath);
+	} catch {
+		return;
+	}
 
-	const text = readFileSync(responsePath, "utf-8");
+	const text = await readFile(responsePath, "utf-8");
 	const { checks, score, maxScore } = validateResponse(text, "full");
 
 	const outputPath = resolve(dirname(responsePath), "validator-check-output.md");
-	mkdirSync(dirname(outputPath), { recursive: true });
+	await mkdir(dirname(outputPath), { recursive: true });
 
 	const output = [
 		"# Validator Check (integrated, non-critical)",
@@ -37,5 +41,5 @@ export async function runResponseValidatorCheck(responsePath: string): Promise<v
 		`*Generated at ${new Date().toISOString()} by validator-check.ts*`,
 	].join("\n");
 
-	writeFileSync(outputPath, output, "utf-8");
+	await writeFile(outputPath, output, "utf-8");
 }

@@ -1,20 +1,23 @@
 import path from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	applyIdeaRefinementProgressEvent,
 	buildIdeaRefinementStatusLine,
 	buildIdeaRefinementWidgetLines,
 	createIdeaRefinementMonitorState,
 	setIdeaRefinementMonitorDetail,
-	stageDisplayName,
 } from "./lib/ui-monitor.ts";
+import { WorkflowRuntimeControl } from "./lib/workflow-runtime-control.ts";
 import { runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
 import { runResponseValidatorCheck } from "./lib/validator-check.ts";
 
 const STATUS_KEY = "idea-refinement";
 const WIDGET_KEY = "idea-refinement-monitor";
-const RENDER_DEBOUNCE_MS = 150;
+const HEARTBEAT_MS = 120;
+const STATUS_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const PAUSE_SHORTCUT = "ctrl+alt+p";
+const STOP_SHORTCUT = "ctrl+alt+x";
 
 function shouldNotifyProgressEvent(event: Parameters<typeof applyIdeaRefinementProgressEvent>[1]): boolean {
 	switch (event.type) {
@@ -64,8 +67,61 @@ function getCurrentModelPattern(ctx: ExtensionCommandContext): string | undefine
 	return `${ctx.model.provider}/${ctx.model.id}`;
 }
 
+function buildPauseResumeHelp(isPaused: boolean): string {
+	return isPaused
+		? `Paused • ${PAUSE_SHORTCUT} resume • ${STOP_SHORTCUT} stop`
+		: `${PAUSE_SHORTCUT} pause • ${STOP_SHORTCUT} stop`;
+}
+
+function handlePauseShortcut(runtimeControl: WorkflowRuntimeControl, runInProgress: boolean, ctx: ExtensionContext): void {
+	if (!runInProgress) {
+		ctx.ui.notify("No idea-refinement workflow is currently running.", "warning");
+		return;
+	}
+	const result = runtimeControl.togglePause();
+	ctx.ui.notify(result.message, result.paused ? "warning" : "info");
+}
+
+function handleStopShortcut(runtimeControl: WorkflowRuntimeControl, runInProgress: boolean, ctx: ExtensionContext): void {
+	if (!runInProgress) {
+		ctx.ui.notify("No idea-refinement workflow is currently running.", "warning");
+		return;
+	}
+	const result = runtimeControl.requestStop("Workflow interrupted by user.");
+	ctx.ui.notify(result.message, "warning");
+}
+
 export default function ideaRefinementExtension(pi: ExtensionAPI) {
 	let runInProgress = false;
+	const runtimeControl = new WorkflowRuntimeControl();
+
+	pi.registerShortcut(PAUSE_SHORTCUT, {
+		description: "Pause or resume the active idea-refinement workflow",
+		handler: async (ctx) => {
+			handlePauseShortcut(runtimeControl, runInProgress, ctx);
+		},
+	});
+
+	pi.registerShortcut(STOP_SHORTCUT, {
+		description: "Stop the active idea-refinement workflow",
+		handler: async (ctx) => {
+			handleStopShortcut(runtimeControl, runInProgress, ctx);
+		},
+	});
+
+	pi.registerCommand("idea-refine-pause", {
+		description: "Pause or resume the active idea-refinement workflow",
+		handler: async (_args, ctx) => {
+			handlePauseShortcut(runtimeControl, runInProgress, ctx);
+		},
+	});
+
+	pi.registerCommand("idea-refine-stop", {
+		description: "Stop the active idea-refinement workflow",
+		handler: async (_args, ctx) => {
+			handleStopShortcut(runtimeControl, runInProgress, ctx);
+		},
+	});
 
 	pi.registerCommand("idea-refine", {
 		description: "Runs the forced iterative idea-refinement workflow",
@@ -103,12 +159,13 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			}
 
 			const monitorState = createIdeaRefinementMonitorState();
-			let renderTimer: ReturnType<typeof setTimeout> | undefined;
+			let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 			let lastConsoleEventMessage: string | undefined;
 			let lastWorkingMessage: string | undefined;
+			let spinnerIndex = 0;
 
 			const setWorking = (message: string | undefined) => {
-				const limited = message && message.length > 80 ? `${message.slice(0, 77)}...` : message;
+				const limited = message && message.length > 120 ? `${message.slice(0, 117)}...` : message;
 				if (limited !== lastWorkingMessage) {
 					lastWorkingMessage = limited;
 					ctx.ui.setWorkingMessage?.(limited);
@@ -116,47 +173,19 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			};
 
 			const renderMonitor = () => {
+				monitorState.elapsedMs = runtimeControl.getElapsedMs();
+				monitorState.isPaused = runtimeControl.isPaused();
+				monitorState.spinnerFrame = runtimeControl.isPaused() ? "⏸" : STATUS_SPINNER_FRAMES[spinnerIndex % STATUS_SPINNER_FRAMES.length];
 				const statusLine = buildIdeaRefinementStatusLine(monitorState);
 				ctx.ui.setStatus(STATUS_KEY, statusLine);
-				// P1-3: Distinct channels.
-				// setStatus = state summary (loop, stage, score) — already built into statusLine.
-				// setWorkingMessage = current action detail — managed by the active spinner.
 				ctx.ui.setWidget(WIDGET_KEY, buildIdeaRefinementWidgetLines(monitorState));
-			};
-
-			let lastRenderTime = 0;
-			const RENDER_THROTTLE_MS = 1000;
-
-			const scheduleRender = (immediate = false) => {
-				if (immediate) {
-					if (renderTimer) {
-						clearTimeout(renderTimer);
-						renderTimer = undefined;
-					}
-					renderMonitor();
-					lastRenderTime = Date.now();
-					return;
-				}
-
-				if (renderTimer) return;
-				const now = Date.now();
-				const elapsed = now - lastRenderTime;
-				if (elapsed >= RENDER_THROTTLE_MS) {
-					renderMonitor();
-					lastRenderTime = now;
-					return;
-				}
-				renderTimer = setTimeout(() => {
-					renderTimer = undefined;
-					renderMonitor();
-					lastRenderTime = Date.now();
-				}, RENDER_DEBOUNCE_MS);
 			};
 
 			const updateUiStatus = (message: string | undefined) => {
 				setIdeaRefinementMonitorDetail(monitorState, message);
-				setWorking(message);
-				scheduleRender(true);
+				const suffix = buildPauseResumeHelp(runtimeControl.isPaused());
+				setWorking(message ? `${message} • ${suffix}` : suffix);
+				renderMonitor();
 			};
 
 			const handleProgressEvent = (event: Parameters<typeof applyIdeaRefinementProgressEvent>[1]) => {
@@ -165,16 +194,27 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 					lastConsoleEventMessage = event.message;
 					ctx.ui.notify(event.message, progressEventLevel(event));
 				}
-				scheduleRender(true);
+				renderMonitor();
 			};
 
 			runInProgress = true;
-			// Clear dedup cache when starting a new run
+			runtimeControl.startRun();
 			lastWorkingMessage = undefined;
 			ctx.ui.setWorkingVisible?.(true);
-			ctx.ui.setWorkingIndicator?.({ frames: ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"], intervalMs: 160 });
-			ctx.ui.notify(`Starting /idea-refine with ${loops} loop(s). Progress will be shown in the console and monitor.`, "info");
-			setWorking("Initializing workflow monitor...");
+			ctx.ui.setWorkingMessage?.(`Initializing workflow monitor... • ${buildPauseResumeHelp(false)}`);
+			ctx.ui.notify(
+				`Starting /idea-refine with ${loops} loop(s). Shortcuts: ${PAUSE_SHORTCUT} pause/resume, ${STOP_SHORTCUT} stop.`,
+				"info",
+			);
+			renderMonitor();
+
+			heartbeatTimer = setInterval(() => {
+				spinnerIndex = (spinnerIndex + 1) % STATUS_SPINNER_FRAMES.length;
+				renderMonitor();
+				if (runtimeControl.isPaused()) {
+					setWorking(buildPauseResumeHelp(true));
+				}
+			}, HEARTBEAT_MS);
 
 			try {
 				const result = await runIdeaRefinementWorkflow({
@@ -184,16 +224,15 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 					modelPattern: getCurrentModelPattern(ctx),
 					onStatus: updateUiStatus,
 					onEvent: handleProgressEvent,
+					runtimeControl,
 				});
 
-				// P1 #6: Validates RESPONSE.md with epistemic validator (async, non-critical)
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				// C4 fix: Log errors instead of silently swallowing
 				runResponseValidatorCheck(responsePath).catch((err) => {
 					console.error("[idea-refinement] Validator check failed:", err);
 				});
 
-				scheduleRender(true);
+				renderMonitor();
 				const lastScoreSuffix = typeof result.latestScore === "number" ? ` • final score ${result.latestScore}/100` : "";
 				ctx.ui.notify(`Idea refinement completed: ${result.relativeCallDir}${lastScoreSuffix}`, "info");
 			} catch (error) {
@@ -208,16 +247,17 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 						isError: true,
 					});
 				}
-				scheduleRender(true);
+				renderMonitor();
 				ctx.ui.notify(`Idea refinement workflow failed: ${message}`, "error");
 			} finally {
 				runInProgress = false;
-				if (renderTimer) {
-					clearTimeout(renderTimer);
-					renderTimer = undefined;
+				if (heartbeatTimer) {
+					clearInterval(heartbeatTimer);
+					heartbeatTimer = undefined;
 				}
-				ctx.ui.setWorkingIndicator?.();
+				runtimeControl.finishRun();
 				ctx.ui.setStatus(STATUS_KEY, undefined);
+				ctx.ui.setWidget(WIDGET_KEY, undefined);
 				ctx.ui.setWorkingMessage?.(undefined);
 				ctx.ui.setWorkingVisible?.(false);
 			}

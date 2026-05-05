@@ -10,6 +10,8 @@ import {
 	markStageSuccess,
 	markStageFailure,
 	saveManifest,
+	manifestWriteCount,
+	resetManifestWriteCount,
 } from "../../lib/manifest.ts";
 import type { StageExecutionResult } from "../../lib/types.ts";
 
@@ -175,4 +177,66 @@ export async function run(): Promise<void> {
 		assert.equal(saved.schemaVersion, 1);
 	});
 	console.log("✓ saveManifest persists JSON correctly");
+
+	// B19: Test resetManifestWriteCount resets counter to 0
+	await withTempDir(async (dir) => {
+		const manifestPath = path.join(dir, "manifest-test.json");
+		const manifest = createInitialManifest({
+			cwd: dir,
+			workspace: {
+				baseDir: path.join(dir, "docs", "idea_refinement"),
+				callDir: path.join(dir, "docs", "idea_refinement", "artifacts_call_01"),
+				logsDir: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "logs"),
+				loopsDir: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "loops"),
+				rootFiles: {
+					idea: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "IDEA.md"),
+					directive: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "DIRECTIVE.md"),
+					learning: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "LEARNING.md"),
+					criteria: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "CRITERIA.md"),
+					diagnosis: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "DIAGNOSIS.md"),
+					metrics: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "METRICS.md"),
+					backlog: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "BACKLOG.md"),
+					response: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "RESPONSE.md"),
+					feedback: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "FEEDBACK.md"),
+					manifest: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "RUN.json"),
+					report: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "REPORT.md"),
+					checklist: path.join(dir, "docs", "idea_refinement", "artifacts_call_01", "CHECKLIST.md"),
+				},
+				relativePaths: {
+					idea: "docs/idea_refinement/artifacts_call_01/IDEA.md",
+					directive: "docs/idea_refinement/artifacts_call_01/DIRECTIVE.md",
+					learning: "docs/idea_refinement/artifacts_call_01/LEARNING.md",
+					criteria: "docs/idea_refinement/artifacts_call_01/CRITERIA.md",
+					diagnosis: "docs/idea_refinement/artifacts_call_01/DIAGNOSIS.md",
+					metrics: "docs/idea_refinement/artifacts_call_01/METRICS.md",
+					backlog: "docs/idea_refinement/artifacts_call_01/BACKLOG.md",
+					response: "docs/idea_refinement/artifacts_call_01/RESPONSE.md",
+					feedback: "docs/idea_refinement/artifacts_call_01/FEEDBACK.md",
+					report: "docs/idea_refinement/artifacts_call_01/REPORT.md",
+					checklist: "docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
+				},
+			},
+			callNumber: 1,
+			requestedLoops: 2,
+			assumptions: [],
+		});
+
+		// Record baseline counter before test
+		const baseline = manifestWriteCount;
+
+		// Accumulate writes
+		await saveManifest(manifestPath, manifest);
+		await saveManifest(manifestPath, manifest);
+		await saveManifest(manifestPath, manifest);
+		assert.ok(manifestWriteCount >= baseline + 3, `Expected counter >= ${baseline + 3}, got ${manifestWriteCount}`);
+
+		// Reset and verify
+		resetManifestWriteCount();
+		assert.equal(manifestWriteCount, 0, `Expected counter = 0 after reset, got ${manifestWriteCount}`);
+
+		// Verify idempotency: reset again should still be 0
+		resetManifestWriteCount();
+		assert.equal(manifestWriteCount, 0, "resetManifestWriteCount should be idempotent");
+	});
+	console.log("✓ B19: resetManifestWriteCount resets counter to 0 (functional test)");
 }

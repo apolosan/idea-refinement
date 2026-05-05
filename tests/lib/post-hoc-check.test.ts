@@ -59,6 +59,17 @@ export async function run(): Promise<void> {
 	});
 	console.log("✓ post-hoc-check returns empty object for nonexistent directory");
 
+	await withTempDir(async (dir) => {
+		const root = path.join(dir, "artifact-snap");
+		await fs.mkdir(path.join(root, "logs"), { recursive: true });
+		await fs.writeFile(path.join(root, "RESPONSE.md"), "# Response", "utf-8");
+		await fs.writeFile(path.join(root, "run.json"), "{}", "utf-8");
+		await fs.writeFile(path.join(root, "logs", "ignored.md"), "ignored", "utf-8");
+		const snap = await takeSnapshot(root, { fileExtensions: [".md"], ignoreDirs: ["logs"] });
+		assert.deepEqual(Object.keys(snap), ["RESPONSE.md"]);
+	});
+	console.log("✓ post-hoc-check honors fileExtensions and ignoreDirs");
+
 	// formatSnapshotDiff
 	const emptyDiff = { changed: [], added: [], removed: [], hasChanges: false };
 	assert.match(formatSnapshotDiff(emptyDiff), /No material changes/);

@@ -76,7 +76,7 @@ export async function run(): Promise<void> {
 		const loopDir = await ensureLoopDirectory(workspace, 1);
 		assert.equal(loopDir, path.join(workspace.loopsDir, "loop_01"));
 		await fs.access(loopDir);
-		await fs.access(path.join(loopDir, "logs"));
+		await assert.rejects(fs.access(path.join(loopDir, "logs")));
 	});
-	console.log("✓ ensureLoopDirectory creates loop directory with logs");
+	console.log("✓ ensureLoopDirectory creates loop directory without extra logs subdirectory");
 }

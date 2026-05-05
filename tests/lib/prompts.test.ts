@@ -4,15 +4,11 @@ import {
 	INITIAL_ARTIFACTS_SYSTEM_PROMPT,
 	DEVELOPMENT_SYSTEM_PROMPT,
 	EVALUATE_LEARNING_SYSTEM_PROMPT,
-	EVALUATION_SYSTEM_PROMPT,
-	LEARNING_UPDATE_SYSTEM_PROMPT,
 	REPORT_SYSTEM_PROMPT,
 	CHECKLIST_SYSTEM_PROMPT,
 	buildInitialArtifactsUserPrompt,
 	buildDevelopmentUserPrompt,
 	buildEvaluateLearningUserPrompt,
-	buildEvaluationUserPrompt,
-	buildLearningUpdateUserPrompt,
 	buildReportUserPrompt,
 	buildChecklistUserPrompt,
 } from "../../lib/prompts.ts";
@@ -67,15 +63,6 @@ export async function run(): Promise<void> {
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /RESPONSE\.md/i);
 	console.log("✓ DEVELOPMENT_SYSTEM_PROMPT contains required elements");
 
-	assert.match(EVALUATION_SYSTEM_PROMPT, /keep, adjust, discard,? or test later/i);
-	assert.match(EVALUATION_SYSTEM_PROMPT, /Overall score:/);
-	console.log("✓ EVALUATION_SYSTEM_PROMPT contains required elements");
-
-	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /prefer to consolidate rather than expand/i);
-	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /operational memory/i);
-	assert.match(LEARNING_UPDATE_SYSTEM_PROMPT, /BACKLOG\.md/i);
-	console.log("✓ LEARNING_UPDATE_SYSTEM_PROMPT contains required elements");
-
 	assert.match(REPORT_SYSTEM_PROMPT, /Investigation Report/i);
 	assert.match(REPORT_SYSTEM_PROMPT, /epistemic tag/i);
 	console.log("✓ REPORT_SYSTEM_PROMPT contains required elements");
@@ -102,17 +89,6 @@ export async function run(): Promise<void> {
 	assert.match(devPrompt, /7/);
 	assert.match(devPrompt, /DIRECTIVE\.md/);
 	console.log("✓ buildDevelopmentUserPrompt builds correctly");
-
-	const evalPrompt = buildEvaluationUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 2, requestedLoops: 3 });
-	assert.match(evalPrompt, /2\/3/);
-	assert.match(evalPrompt, /FEEDBACK\.md/);
-	console.log("✓ buildEvaluationUserPrompt builds correctly");
-
-	const learningPrompt = buildLearningUpdateUserPrompt({ cwd: "/test", workspace: mockWorkspace, loopNumber: 1, requestedLoops: 3 });
-	assert.match(learningPrompt, /1\/3/);
-	assert.match(learningPrompt, /LEARNING\.md/);
-	assert.match(learningPrompt, /BACKLOG\.md/);
-	console.log("✓ buildLearningUpdateUserPrompt builds correctly");
 
 	const reportPrompt = buildReportUserPrompt({ cwd: "/test", workspace: mockWorkspace, requestedLoops: 5, completedLoops: 5 });
 	assert.match(reportPrompt, /5\/5/);

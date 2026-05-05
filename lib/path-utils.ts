@@ -134,9 +134,6 @@ export async function prepareCallWorkspace(cwd: string, callNumber: number): Pro
 
 export async function ensureLoopDirectory(workspace: CallWorkspace, loopNumber: number): Promise<string> {
 	const loopDir = path.join(workspace.loopsDir, getLoopDirectoryName(loopNumber));
-	// O2 fix: Create logs/ subdirectory inside each loop directory
-	const loopLogsDir = path.join(loopDir, "logs");
-	await fs.mkdir(loopLogsDir, { recursive: true });
 	await fs.mkdir(loopDir, { recursive: true });
 	return loopDir;
 }

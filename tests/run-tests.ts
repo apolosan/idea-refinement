@@ -12,7 +12,12 @@ import { run as runRunnerTests } from "./lib/runner.test.ts";
 import { run as runNumberGeneratorTests } from "./lib/number-generator.test.ts";
 import { run as runPromptsTests } from "./lib/prompts.test.ts";
 import { run as runArtifactGuardTests } from "./lib/artifact-guard.test.ts";
+import { run as runArtifactGuardCorruptedTests } from "./lib/artifact-guard-corrupted.test.ts";
+import { run as runTerminalStateCacheTests } from "./lib/terminal-state-cache.test.ts";
+import { run as runValidatorCheckConcurrencyTests } from "./lib/validator-check-concurrency.test.ts";
+import { run as runTempDirPermissionsTests } from "./lib/temp-dir-permissions.test.ts";
 import { run as runWorkflowTests } from "./lib/workflow.test.ts";
+import { run as runWorkflowRuntimeControlTests } from "./lib/workflow-runtime-control.test.ts";
 
 async function run(): Promise<void> {
 	const suites = [
@@ -30,7 +35,12 @@ async function run(): Promise<void> {
 		{ name: "number-generator", run: runNumberGeneratorTests },
 		{ name: "prompts", run: runPromptsTests },
 		{ name: "artifact-guard", run: runArtifactGuardTests },
+		{ name: "artifact-guard-corrupted", run: runArtifactGuardCorruptedTests },
+		{ name: "terminal-state-cache", run: runTerminalStateCacheTests },
+		{ name: "validator-check-concurrency", run: runValidatorCheckConcurrencyTests },
+		{ name: "temp-dir-permissions", run: runTempDirPermissionsTests },
 		{ name: "workflow", run: runWorkflowTests },
+		{ name: "workflow-runtime-control", run: runWorkflowRuntimeControlTests },
 	];
 
 	let passed = 0;

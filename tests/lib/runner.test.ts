@@ -110,4 +110,70 @@ export async function run(): Promise<void> {
 		assert.match(await fs.readFile(stderrPath, "utf8"), /partial stderr/);
 	});
 	console.log("✓ runPiStage transmits logs incrementally and reports progress");
+
+	// Test inactivity timeout mechanism
+	await withTempDir(async (dir) => {
+		// Script that hangs indefinitely (never exits, never sends message_end)
+		const scriptPath = path.join(dir, "hang-forever.js");
+		const logPath = path.join(dir, "logs", "timeout.jsonl");
+		const stderrPath = path.join(dir, "logs", "timeout.stderr.log");
+		await fs.writeFile(
+			scriptPath,
+			'// Hang forever\nprocess.stdout.write(JSON.stringify({ type: "session" }) + "\\n");\nsetInterval(() => {}, 1000);',
+			"utf8",
+		);
+
+		const start = Date.now();
+		try {
+			await runPiStage({
+				cwd: dir,
+				systemPrompt: "system",
+				userPrompt: "user",
+				logPath,
+				stderrPath,
+				protectedRoots: [],
+				timeoutMs: 500, // 500ms inactivity timeout
+				invocation: {
+					command: process.execPath,
+					args: [scriptPath],
+				},
+			});
+			assert.fail("Should have thrown timeout error");
+		} catch (error) {
+			const elapsed = Date.now() - start;
+			assert.ok(error instanceof Error, "Error must be an Error instance");
+			assert.match(error.message, /inactive|timed out/i, "Error must mention inactivity timeout");
+			assert.ok(elapsed >= 400, `Should wait at least 400ms, waited ${elapsed}ms`);
+			assert.ok(elapsed < 5000, `Should not wait more than 5s, waited ${elapsed}ms`);
+		}
+		console.log("✓ inactivity timeout triggers correctly (500ms on hanging process)");
+	});
+
+	// Test that timeout=0 disables inactivity timeout
+	await withTempDir(async (dir) => {
+		const scriptPath = path.join(dir, "quick-exit.js");
+		const logPath = path.join(dir, "logs", "no-timeout.jsonl");
+		const stderrPath = path.join(dir, "logs", "no-timeout.stderr.log");
+		await fs.writeFile(
+			scriptPath,
+			'process.stdout.write(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Done" }], stopReason: "stop" } }) + "\\n");\nsetTimeout(() => process.exit(0), 20);',
+			"utf8",
+		);
+
+		const result = await runPiStage({
+			cwd: dir,
+			systemPrompt: "system",
+			userPrompt: "user",
+			logPath,
+			stderrPath,
+			protectedRoots: [],
+			timeoutMs: 0, // disabled
+			invocation: {
+				command: process.execPath,
+				args: [scriptPath],
+			},
+		});
+		assert.equal(result.text.trim(), "Done");
+		console.log("✓ timeout=0 disables inactivity timeout");
+	});
 }

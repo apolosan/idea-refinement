@@ -20,6 +20,9 @@ export interface IdeaRefinementMonitorState {
 	activeTool?: string;
 	latestScore?: number;
 	lastError?: string;
+	elapsedMs?: number;
+	isPaused?: boolean;
+	spinnerFrame?: string;
 }
 
 const STATUS_DETAIL_LIMIT = 120;
@@ -54,7 +57,8 @@ export function buildStageStatusMessage(statusMessage: string, detail?: string):
 	return detail ? `${statusMessage} • ${detail}` : statusMessage;
 }
 
-function workflowStatusLabel(status: WorkflowStatus | "idle"): string {
+function workflowStatusLabel(status: WorkflowStatus | "idle", isPaused = false): string {
+	if (isPaused) return "paused";
 	switch (status) {
 		case "running":
 			return "running";
@@ -65,6 +69,14 @@ function workflowStatusLabel(status: WorkflowStatus | "idle"): string {
 		default:
 			return "waiting";
 	}
+}
+
+function formatElapsed(elapsedMs: number | undefined): string {
+	const totalSeconds = Math.max(0, Math.floor((elapsedMs ?? 0) / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
 /**
@@ -303,7 +315,7 @@ export function applyIdeaRefinementProgressEvent(state: IdeaRefinementMonitorSta
 }
 
 export function buildIdeaRefinementStatusLine(state: IdeaRefinementMonitorState): string | undefined {
-	const parts = ["idea-refine"];
+	const parts = [state.spinnerFrame ? `${state.spinnerFrame} idea-refine` : "idea-refine"];
 
 	if (state.relativeCallDir) {
 		parts.push(state.relativeCallDir.split("/").pop() ?? state.relativeCallDir);
@@ -320,6 +332,8 @@ export function buildIdeaRefinementStatusLine(state: IdeaRefinementMonitorState)
 		parts.push(`${state.completedLoops}/${state.requestedLoops} loops`);
 	}
 
+	parts.push(`elapsed ${formatElapsed(state.elapsedMs)}`);
+	if (state.isPaused) parts.push("paused");
 	if (state.currentStage) parts.push(stageDisplayName(state.currentStage));
 	if (state.activeTool) parts.push(`tool ${state.activeTool}`);
 	if (typeof state.latestScore === "number") parts.push(`score ${state.latestScore}/100`);
@@ -339,10 +353,11 @@ export function buildIdeaRefinementWidgetLines(state: IdeaRefinementMonitorState
 	// Compact layout: guaranteed ≤ 10 lines to avoid "... (widget truncated)" from host
 	const lines: string[] = [
 		"[ IDEA REFINE MONITOR ]",
-		`  status: ${workflowStatusLabel(state.workflowStatus)}${scoreSuffix} | dir: ${state.relativeCallDir?.split("/").pop() ?? "preparing..."}`,
+		`  status: ${workflowStatusLabel(state.workflowStatus, state.isPaused)}${scoreSuffix} | dir: ${state.relativeCallDir?.split("/").pop() ?? "preparing..."}`,
+		`  elapsed: ${formatElapsed(state.elapsedMs)} | controls: Ctrl+Alt+P pause/resume | Ctrl+Alt+X stop`,
 		`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`,
 		`  stages: ${stageStatusIcon(state.bootstrapStatus, unicode)} bootstrap  ${stageStatusIcon(state.loopStageStatuses.develop, unicode)} develop  ${stageStatusIcon(state.loopStageStatuses.evaluate, unicode)} evaluate  ${stageStatusIcon(state.loopStageStatuses.learning, unicode)} learning  ${stageStatusIcon(state.loopStageStatuses.report, unicode)} report  ${stageStatusIcon(state.loopStageStatuses.checklist, unicode)} checklist`,
-		`  current: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)} | tool: ${state.activeTool ?? "none"}`,
+		`  current: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)} | tool: ${state.activeTool ?? "none"} | spinner: ${state.spinnerFrame ?? "-"}`,
 		`  detail: ${truncate(state.currentDetail ?? state.lastError ?? "...", 120)}`,
 	];
 

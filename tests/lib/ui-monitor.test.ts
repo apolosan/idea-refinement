@@ -27,6 +27,7 @@ export async function run(): Promise<void> {
 	assert.equal(state.workflowStatus, "idle");
 	assert.equal(state.requestedLoops, 0);
 	assert.equal(state.bootstrapStatus, "pending");
+	assert.equal(state.elapsedMs, undefined);
 	console.log("✓ createIdeaRefinementMonitorState initializes correctly");
 
 	setIdeaRefinementMonitorDetail(state, "new detail");
@@ -118,17 +119,23 @@ export async function run(): Promise<void> {
 	console.log("✓ applyIdeaRefinementProgressEvent processes workflow_completed");
 
 	// Status line
+	state.elapsedMs = 12_345;
+	state.spinnerFrame = "⠋";
 	const statusLine = buildIdeaRefinementStatusLine(state);
 	assert.ok(statusLine);
 	assert.match(statusLine, /loop 1\/3/);
 	assert.match(statusLine, /score 85\/100/);
+	assert.match(statusLine, /elapsed 00:00:12/);
 	console.log("✓ buildIdeaRefinementStatusLine summarizes status correctly");
 
 	// Widget lines
+	state.isPaused = true;
 	const widgetLines = buildIdeaRefinementWidgetLines(state);
 	const widgetText = widgetLines.join("\n");
 	assert.match(widgetText, /\[ IDEA REFINE MONITOR \]/);
 	assert.match(widgetText, /status:/);
+	assert.match(widgetText, /paused/);
+	assert.match(widgetText, /elapsed:/);
 	assert.match(widgetText, /loops:/);
 	assert.match(widgetText, /stages:/);
 	assert.match(widgetText, /current:/);

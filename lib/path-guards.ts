@@ -14,11 +14,18 @@ export function parseProtectedRoots(value: string | undefined): string[] {
 	}
 }
 
-export function isPathInsideRoots(targetPath: string, cwd: string, roots: string[]): boolean {
+/**
+ * Finds which root contains the target path.
+ * Returns the containing root string, or undefined if not inside any root.
+ */
+export function findContainingRoot(targetPath: string, cwd: string, roots: string[]): string | undefined {
 	const resolvedTarget = path.resolve(cwd, targetPath);
-
-	return roots.some((root) => {
+	return roots.find((root) => {
 		const resolvedRoot = path.resolve(root);
 		return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
 	});
+}
+
+export function isPathInsideRoots(targetPath: string, cwd: string, roots: string[]): boolean {
+	return findContainingRoot(targetPath, cwd, roots) !== undefined;
 }
