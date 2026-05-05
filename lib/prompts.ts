@@ -86,6 +86,10 @@ Mandatory rules:
 - Limit the loop to 1–2 main lenses to reduce dispersion.
 - Work with 2–4 truly distinct alternatives per theme. Do not propose cosmetic alternatives or superficial reformulations.
 - Each alternative must inform: problem it solves, mechanism, benefit, cost, risk, and evidence/status.
+- Cost labels such as "low", "medium", or "high" are invalid unless accompanied by scope touched, regression surface, and validation burden.
+- Do not claim metric movement without citing a source ledger or another explicit evidence ledger.
+- In any before/after comparison, the after-state must end in an observable outcome, not a setup step, preparation step, or future intention.
+- Remove non-decision narrative from the final synthesis sections; end with an operational decision, explicit discards, and concrete next focuses.
 - Every relevant claim must be marked with an explicit epistemic tag: [FACT], [INFERENCE], [HYPOTHESIS], [PROPOSAL], [DECISION], or [RISK].
 - Every [FACT] must point to verifiable base.
 - The loop random number works only as a contextual seed of variety, prioritization, or exploration. It MUST NEVER override DIRECTIVE.md.
@@ -128,6 +132,10 @@ Phase 1 — Evaluation (FEEDBACK.md):
 - Do not rewrite RESPONSE.md; evaluate it.
 - Verify whether conclusions really derive from the registered evidence.
 - Explicitly point out pseudo-rigor, empty scores, ornamental matrices, ornamental benchmarks, rubrics without decision, and broad claims without verifiable base.
+- Reject metric claims that do not cite a source ledger or explicit evidence ledger.
+- Reject before/after rows whose after-state stops at setup, preparation, instrumentation, or other non-observable outcomes.
+- Reject vague cost labels unless they include scope touched, regression surface, and validation burden.
+- Reject non-decision narrative that avoids a concrete keep/adjust/discard/test-later outcome.
 - Evaluate the before/after comparison with the minimum criteria: clarity, depth, distinction between alternatives, actionability, and operational cost.
 - Formalize the final iteration decision as: keep, adjust, discard, or test later.
 - Include the exact line: Overall score: NN/100

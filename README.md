@@ -8,6 +8,18 @@ Think of it as **autoresearch** — inspired by the concept Andrej Karpathy popu
 
 While it is designed to refine raw ideas into actionable plans, it works just as powerfully for **intelligent and convincing problem solving**: feed it a bug, an architectural tension, a product decision, or a research question, and the workflow will dissect it, propose alternatives, evaluate them with epistemic rigor, and deliver a prioritized checklist of next steps.
 
+## What's New in 1.6.0
+
+This release includes all updates made in the current session:
+
+- section-aware C3 validation: the response validator now counts alternatives only inside `## Minimum alternatives matrix`;
+- new regression tests for the C3 stray-pipe false-positive and for a valid in-section control matrix;
+- spawned-subprocess argv measurement in `runPiStage()` with an exact sentinel baseline;
+- a controlled `stdin` prompt-transport pilot that removes the raw checklist `userPrompt` from spawned argv on the checklist stage;
+- stricter workflow prompt rules that reject ledger-free metric claims, setup-only after-states, vague cost labels, and non-decision narrative;
+- supporting governance artifacts produced for this session: inspected-source ledger, environment dependency ledger, prompt-transport pilot note, and recomputed backlog/metrics for `artifacts_call_02`;
+- a small monitor copy refinement: the widget now shows `working...` instead of repeating the active tool line in the current-status row.
+
 ## Installation
 
 ### Via Pi (recommended)
@@ -167,6 +179,16 @@ It itself:
 - enforces inactivity timeouts instead of absolute stage deadlines;
 - allows pause/resume and stop control for the whole workflow.
 
+## Prompt Transport and Validation Behavior
+
+### Section-aware alternatives validation
+
+The C3 validator now treats `## Minimum alternatives matrix` as the only valid scope for alternatives counting. Pipe-formatted rows outside that section no longer satisfy the matrix requirement.
+
+### Checklist-stage stdin pilot
+
+To reduce raw prompt exposure in subprocess argv, the extension now supports an internal prompt-transport mode that sends the real prompt through `stdin`. In this release, the production pilot is intentionally limited to the final `CHECKLIST.md` stage so the rollout stays reversible and easy to verify.
+
 ## Environment Variable
 
 ### `PI_IDEA_REFINEMENT_PROTECTED_ROOTS`
@@ -213,6 +235,8 @@ Tests cover:
 - initial artifact marker parsing and `LEARNING.md` + `BACKLOG.md` update parsing;
 - `Overall score` extraction;
 - artifact path protection and subprocess tool restrictions;
+- section-aware C3 validation, including stray-pipe rejection outside the matrix section;
+- spawned-subprocess argv baseline capture and the `stdin` transport pilot;
 - inactivity timeout handling;
 - pause/resume/stop runtime control;
 - elapsed time and animated monitor rendering;

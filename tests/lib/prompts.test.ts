@@ -61,6 +61,8 @@ export async function run(): Promise<void> {
 
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /Minimum alternatives matrix/i);
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /RESPONSE\.md/i);
+	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /source ledger|evidence ledger/i);
+	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /scope touched, regression surface, and validation burden/i);
 	console.log("✓ DEVELOPMENT_SYSTEM_PROMPT contains required elements");
 
 	assert.match(REPORT_SYSTEM_PROMPT, /Investigation Report/i);
@@ -76,6 +78,8 @@ export async function run(): Promise<void> {
 	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /LEARNING\.md/);
 	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /BACKLOG\.md/);
 	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /Overall score:/);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /Reject metric claims that do not cite a source ledger/i);
+	assert.match(EVALUATE_LEARNING_SYSTEM_PROMPT, /Reject non-decision narrative/i);
 	console.log("✓ EVALUATE_LEARNING_SYSTEM_PROMPT contains required elements");
 
 	const initialPrompt = buildInitialArtifactsUserPrompt({ cwd: "/test", workspace: mockWorkspace, randomNumber: 42, policy: "OPTIMIZATION" });

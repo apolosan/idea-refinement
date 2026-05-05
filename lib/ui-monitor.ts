@@ -357,7 +357,7 @@ export function buildIdeaRefinementWidgetLines(state: IdeaRefinementMonitorState
 		`  elapsed: ${formatElapsed(state.elapsedMs)} | controls: Ctrl+Alt+P pause/resume | Ctrl+Alt+X stop`,
 		`  loops: ${state.completedLoops}/${requestedLoops}${currentLabel} ${loopBar}`,
 		`  stages: ${stageStatusIcon(state.bootstrapStatus, unicode)} bootstrap  ${stageStatusIcon(state.loopStageStatuses.develop, unicode)} develop  ${stageStatusIcon(state.loopStageStatuses.evaluate, unicode)} evaluate  ${stageStatusIcon(state.loopStageStatuses.learning, unicode)} learning  ${stageStatusIcon(state.loopStageStatuses.report, unicode)} report  ${stageStatusIcon(state.loopStageStatuses.checklist, unicode)} checklist`,
-		`  current: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)} | tool: ${state.activeTool ?? "none"} | spinner: ${state.spinnerFrame ?? "-"}`,
+		`  current: ${formatStageReference(state.currentStage, state.currentLoop, requestedLoops)} | working... ${state.spinnerFrame ?? "-"}`,
 		`  detail: ${truncate(state.currentDetail ?? state.lastError ?? "...", 120)}`,
 	];
 

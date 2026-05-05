@@ -19,7 +19,7 @@ import {
 	REPORT_SYSTEM_PROMPT,
 	WORKFLOW_ASSUMPTIONS,
 } from "./prompts.ts";
-import { runPiStage } from "./runner.ts";
+import { runPiStage, type UserPromptTransport } from "./runner.ts";
 import type { DirectivePolicy, PiStageStreamEvent, StageExecutionResult, StageName, StageRecord, WorkflowManifest, WorkflowProgressEvent } from "./types.ts";
 import type { WorkflowRuntimeControl } from "./workflow-runtime-control.ts";
 import { stageDisplayName, buildStageStatusMessage } from "./ui-monitor.ts";
@@ -107,6 +107,7 @@ async function runManagedStage(options: {
 	relativeCallDir: string;
 	systemPrompt: string;
 	userPrompt: string;
+	userPromptTransport?: UserPromptTransport;
 	manifest: WorkflowManifest;
 	manifestPath: string;
 	onStatus?: (message: string | undefined) => void;
@@ -131,6 +132,7 @@ async function runManagedStage(options: {
 		relativeCallDir,
 		systemPrompt,
 		userPrompt,
+		userPromptTransport = "argv",
 		manifest,
 		manifestPath,
 		onStatus,
@@ -164,6 +166,7 @@ async function runManagedStage(options: {
 			thinkingLevel,
 			systemPrompt,
 			userPrompt,
+			userPromptTransport,
 			logPath,
 			stderrPath,
 			protectedRoots,
@@ -537,6 +540,7 @@ async function runFinalStages(options: {
 		onStatus,
 		onEvent,
 		statusMessage: `Generating action checklist: CHECKLIST.md`,
+		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
 	});

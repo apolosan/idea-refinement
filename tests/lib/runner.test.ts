@@ -30,6 +30,32 @@ async function waitForMatch(filePath: string, pattern: RegExp, timeoutMs = 2_000
 	return fs.readFile(filePath, "utf8");
 }
 
+async function createArgvCaptureScript(dir: string, capturePath: string): Promise<string> {
+	const scriptPath = path.join(dir, "capture-argv.mjs");
+	await fs.writeFile(
+		scriptPath,
+		[
+			"import { writeFileSync } from 'node:fs';",
+			`const capturePath = ${JSON.stringify(capturePath)};`,
+			"let stdin = '';",
+			"process.stdin.setEncoding('utf8');",
+			"process.stdin.on('data', (chunk) => { stdin += chunk; });",
+			"process.stdin.on('end', () => {",
+			"  const argv = process.argv.slice(2);",
+			"  writeFileSync(capturePath, JSON.stringify({ argv, stdin }, null, 2), 'utf8');",
+			"  process.stdout.write(JSON.stringify({ type: 'session' }) + '\\n');",
+			"  process.stdout.write(JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: stdin ? 'stdin-ok' : 'argv-ok' }], stopReason: 'stop' } }) + '\\n');",
+			"});",
+		].join("\n"),
+		"utf8",
+	);
+	return scriptPath;
+}
+
+function countOccurrences(values: string[], target: string): number {
+	return values.reduce((total, value) => total + (value === target ? 1 : 0), 0);
+}
+
 export async function run(): Promise<void> {
 	const piArgs = buildPiArgs({
 		tempPromptPath: "/tmp/idea-refinement-system-prompt.md",
@@ -46,6 +72,12 @@ export async function run(): Promise<void> {
 	assert.equal(piArgs[piArgs.indexOf("--thinking") + 1], "high");
 	// userPrompt is appended after all flags
 	assert.equal(piArgs.indexOf("End user"), piArgs.length - 1);
+	const stdinArgs = buildPiArgs({
+		tempPromptPath: "/tmp/idea-refinement-system-prompt.md",
+		userPrompt: "SENTINEL_PROMPT",
+		userPromptTransport: "stdin",
+	});
+	assert.equal(stdinArgs.includes("SENTINEL_PROMPT"), false);
 	console.log("✓ buildPiArgs builds arguments correctly");
 
 	await withTempDir(async (dir) => {
@@ -110,6 +142,57 @@ export async function run(): Promise<void> {
 		assert.match(await fs.readFile(stderrPath, "utf8"), /partial stderr/);
 	});
 	console.log("✓ runPiStage transmits logs incrementally and reports progress");
+
+	await withTempDir(async (dir) => {
+		const scriptCapturePath = path.join(dir, "argv-capture.json");
+		const scriptPath = await createArgvCaptureScript(dir, scriptCapturePath);
+		const sentinel = "SENTINEL_PROMPT_ARGV_BASELINE";
+
+		const result = await runPiStage({
+			cwd: dir,
+			systemPrompt: "system",
+			userPrompt: sentinel,
+			logPath: path.join(dir, "logs", "argv-baseline.jsonl"),
+			stderrPath: path.join(dir, "logs", "argv-baseline.stderr.log"),
+			protectedRoots: [],
+			invocation: {
+				command: process.execPath,
+				args: [scriptPath],
+			},
+		});
+
+		const capture = JSON.parse(await fs.readFile(scriptCapturePath, "utf8")) as { argv: string[]; stdin: string };
+		assert.equal(result.text.trim(), "argv-ok");
+		assert.equal(countOccurrences(capture.argv, sentinel), 1);
+		assert.equal(capture.stdin, "");
+	});
+	console.log("✓ runPiStage captures a stable spawned-argv baseline for raw userPrompt transport");
+
+	await withTempDir(async (dir) => {
+		const scriptCapturePath = path.join(dir, "argv-capture-stdin.json");
+		const scriptPath = await createArgvCaptureScript(dir, scriptCapturePath);
+		const sentinel = "SENTINEL_PROMPT_STDIN_PILOT";
+
+		const result = await runPiStage({
+			cwd: dir,
+			systemPrompt: "system",
+			userPrompt: sentinel,
+			userPromptTransport: "stdin",
+			logPath: path.join(dir, "logs", "argv-stdin.jsonl"),
+			stderrPath: path.join(dir, "logs", "argv-stdin.stderr.log"),
+			protectedRoots: [],
+			invocation: {
+				command: process.execPath,
+				args: [scriptPath],
+			},
+		});
+
+		const capture = JSON.parse(await fs.readFile(scriptCapturePath, "utf8")) as { argv: string[]; stdin: string };
+		assert.equal(result.text.trim(), "stdin-ok");
+		assert.equal(countOccurrences(capture.argv, sentinel), 0);
+		assert.equal(capture.stdin, sentinel);
+	});
+	console.log("✓ runPiStage stdin pilot removes raw userPrompt from spawned argv");
 
 	// Test inactivity timeout mechanism
 	await withTempDir(async (dir) => {

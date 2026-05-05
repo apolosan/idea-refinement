@@ -33,6 +33,37 @@ interface ValidationCheck {
 	detail?: string;
 }
 
+function getSectionLines(text: string, sectionName: string): string[] {
+	const lines = text.split("\n");
+	const targetHeading = sectionName.trim().toLowerCase();
+	let startIndex = -1;
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const trimmed = lines[index].trim().toLowerCase();
+		if (trimmed === `## ${targetHeading}`) {
+			startIndex = index + 1;
+			break;
+		}
+	}
+
+	if (startIndex === -1) return [];
+
+	const sectionLines: string[] = [];
+	for (let index = startIndex; index < lines.length; index += 1) {
+		const trimmed = lines[index].trim();
+		if (/^##\s+/.test(trimmed)) break;
+		sectionLines.push(lines[index]);
+	}
+	return sectionLines;
+}
+
+function countMatrixRows(lines: string[]): number {
+	return lines.filter((line) => {
+		const trimmed = line.trim();
+		return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 1;
+	}).length;
+}
+
 export function validateResponse(text: string, strictness: "fast" | "full" = "fast"): ValidationResult {
 	const checks: ValidationCheck[] = [];
 	let points = 0;
@@ -67,13 +98,18 @@ export function validateResponse(text: string, strictness: "fast" | "full" = "fa
 		else points += Math.max(0, 15 - missingSections * 3);
 	}
 
-	// C3: At least 2 alternatives
-	const altLines = text.split("\n").filter((l) => l.startsWith("|") && l.includes("|"));
-	const hasAlternatives = altLines.length >= 4; // at least 2 rows + header + separator
+	// C3: At least 2 alternatives inside the dedicated matrix section
+	const matrixSectionLines = getSectionLines(text, "Minimum alternatives matrix");
+	const matrixRowCount = countMatrixRows(matrixSectionLines);
+	const hasAlternatives = matrixRowCount >= 4; // header + separator + at least 2 alternatives
 	checks.push({
 		name: "C3: At least 2 alternatives in matrix",
 		passed: hasAlternatives,
-		detail: hasAlternatives ? `${Math.floor((altLines.length - 2) / 2)} alternatives detected` : "No matrix rows found",
+		detail: matrixSectionLines.length === 0
+			? "No valid '## Minimum alternatives matrix' section found"
+			: hasAlternatives
+				? `${Math.max(0, matrixRowCount - 2)} alternatives detected inside target section`
+				: "Not enough matrix rows inside target section",
 	});
 	if (hasAlternatives) points += 15;
 

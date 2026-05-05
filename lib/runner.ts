@@ -116,8 +116,19 @@ async function writeTempSystemPrompt(systemPrompt: string): Promise<{ dir: strin
 	return { dir: tempDir, filePath };
 }
 
-export function buildPiArgs(options: { tempPromptPath: string; userPrompt: string; model?: string; thinkingLevel?: string; cwd?: string }): string[] {
-	const { tempPromptPath, userPrompt, model, thinkingLevel, cwd } = options;
+export type UserPromptTransport = "argv" | "stdin";
+
+const STDIN_USER_PROMPT_PREAMBLE = "Use the piped stdin content as the primary user prompt.";
+
+export function buildPiArgs(options: {
+	tempPromptPath: string;
+	userPrompt: string;
+	model?: string;
+	thinkingLevel?: string;
+	cwd?: string;
+	userPromptTransport?: UserPromptTransport;
+}): string[] {
+	const { tempPromptPath, userPrompt, model, thinkingLevel, cwd, userPromptTransport = "argv" } = options;
 	const args = [
 		"--mode",
 		"json",
@@ -131,7 +142,7 @@ export function buildPiArgs(options: { tempPromptPath: string; userPrompt: strin
 	];
 	if (model) args.push("--model", model);
 	if (thinkingLevel) args.push("--thinking", thinkingLevel);
-	args.push(userPrompt);
+	args.push(userPromptTransport === "stdin" ? STDIN_USER_PROMPT_PREAMBLE : userPrompt);
 	return args;
 }
 
@@ -229,6 +240,7 @@ export interface RunPiStageOptions {
 	thinkingLevel?: string;
 	systemPrompt: string;
 	userPrompt: string;
+	userPromptTransport?: UserPromptTransport;
 	logPath: string;
 	stderrPath: string;
 	protectedRoots: string[];
@@ -253,7 +265,20 @@ export interface RunPiStageOptions {
 }
 
 export async function runPiStage(options: RunPiStageOptions): Promise<StageExecutionResult> {
-	const { cwd, model, thinkingLevel, systemPrompt, userPrompt, logPath, stderrPath, protectedRoots, onProgress, onEvent, runtimeControl } = options;
+	const {
+		cwd,
+		model,
+		thinkingLevel,
+		systemPrompt,
+		userPrompt,
+		userPromptTransport = "argv",
+		logPath,
+		stderrPath,
+		protectedRoots,
+		onProgress,
+		onEvent,
+		runtimeControl,
+	} = options;
 	// Inactivity timeout only. Reset on meaningful subprocess progress.
 	const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
 	const usage = zeroUsage();
@@ -288,6 +313,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			model,
 			thinkingLevel,
 			cwd,
+			userPromptTransport,
 		});
 
 		const invocation = options.invocation
@@ -300,12 +326,14 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd,
 				shell: false,
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: ["pipe", "pipe", "pipe"],
 				env: {
 					...process.env,
 					[PROTECTED_ROOTS_ENV]: JSON.stringify(protectedRoots),
 				},
 			});
+
+			proc.stdin.end(userPromptTransport === "stdin" ? userPrompt : "");
 
 			let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 			let timeoutError: Error | undefined;

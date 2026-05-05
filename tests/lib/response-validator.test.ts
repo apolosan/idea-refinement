@@ -31,6 +31,34 @@ function buildValidResponse(): string {
 	].join("\n");
 }
 
+function buildInvalidResponseWithStrayRowsOutsideMatrix(): string {
+	return buildValidResponse()
+		.replace(
+			["## Operational questions and applied external research", "Some questions here to add more lines to the document for validation."].join("\n"),
+			[
+				"## Operational questions and applied external research",
+				"Some questions here to add more lines to the document for validation.",
+				"| stray | row | outside | the | target | section |",
+				"| stray | row | outside | the | target | section |",
+				"| stray | row | outside | the | target | section |",
+				"| stray | row | outside | the | target | section |",
+			].join("\n"),
+		)
+		.replace(
+			[
+				"## Minimum alternatives matrix",
+				"| Alt | Problem | Mechanism | Benefit | Cost | Risk |",
+				"|-----|---------|-----------|---------|------|------|",
+				"| A   | X       | Y         | Z       | Low  | None |",
+				"| B   | X2      | Y2        | Z2      | High | Some |",
+			].join("\n"),
+			[
+				"## Minimum alternatives matrix",
+				"Decision table intentionally omitted here to verify section scoping.",
+			].join("\n"),
+		);
+}
+
 export async function run(): Promise<void> {
 	const valid = validateResponse(buildValidResponse());
 	assert.equal(valid.passed, true);
@@ -51,6 +79,17 @@ export async function run(): Promise<void> {
 	const adoptCheck = withAdopt.checks.find((c) => c.name.includes("Adopt"));
 	assert.equal(adoptCheck?.passed, false);
 	console.log("✓ validateResponse detects prohibited use of 'Adopt'");
+
+	const strayRows = validateResponse(buildInvalidResponseWithStrayRowsOutsideMatrix());
+	const strayRowsCheck = strayRows.checks.find((c) => c.name.startsWith("C3:"));
+	assert.equal(strayRowsCheck?.passed, false);
+	assert.match(strayRowsCheck?.detail ?? "", /target section|section found/i);
+	console.log("✓ validateResponse rejects stray matrix rows outside the target section");
+
+	const sectionScopedValid = validateResponse(buildValidResponse());
+	const sectionScopedValidCheck = sectionScopedValid.checks.find((c) => c.name.startsWith("C3:"));
+	assert.equal(sectionScopedValidCheck?.passed, true);
+	console.log("✓ validateResponse accepts a real matrix inside the target section");
 
 	const noSections = validateResponse("[FACT] ref\n".repeat(60));
 	const sectionChecks = noSections.checks.filter((c) => c.name.startsWith("C2:"));
