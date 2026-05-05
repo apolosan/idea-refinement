@@ -5,7 +5,7 @@ import { generateRandomNumber } from "./number-generator.ts";
 import { writeMarkdownFile } from "./io.ts";
 import { createInitialManifest, createLoopEntry, markStageFailure, markStageRunning, markStageSuccess, saveManifest } from "./manifest.ts";
 import { diffSnapshots, formatSnapshotDiff, takeSnapshot, type SnapshotDiff } from "./post-hoc-check.ts";
-import { ensureLoopDirectory, findNextCallNumber, prepareCallWorkspace, toProjectRelativePath } from "./path-utils.ts";
+import { ensureLoopDirectory, findNextCallNumber, getCallDirectoryName, getLoopDirectoryName, prepareCallWorkspace, toProjectRelativePath } from "./path-utils.ts";
 import {
 	buildChecklistUserPrompt,
 	buildDevelopmentUserPrompt,
@@ -20,7 +20,17 @@ import {
 	WORKFLOW_ASSUMPTIONS,
 } from "./prompts.ts";
 import { runPiStage, type UserPromptTransport } from "./runner.ts";
-import type { DirectivePolicy, PiStageStreamEvent, StageExecutionResult, StageName, StageRecord, WorkflowManifest, WorkflowProgressEvent } from "./types.ts";
+import type {
+	DirectivePolicy,
+	LoopManifestEntry,
+	PiStageStreamEvent,
+	ResumeSourceAnalysis,
+	StageExecutionResult,
+	StageName,
+	StageRecord,
+	WorkflowManifest,
+	WorkflowProgressEvent,
+} from "./types.ts";
 import type { WorkflowRuntimeControl } from "./workflow-runtime-control.ts";
 import { stageDisplayName, buildStageStatusMessage } from "./ui-monitor.ts";
 import { determineDirectivePolicy, extractOverallScore } from "./validation.ts";
@@ -45,6 +55,23 @@ export interface WorkflowRunResult {
 	latestScore?: number;
 }
 
+export interface WorkflowResumeInput {
+	cwd: string;
+	sourceCallSpecifier: string;
+	finalLoopCount: number;
+	workaroundInstructions: string;
+	modelPattern?: string;
+	thinkingLevel?: string;
+	onStatus?: (message: string | undefined) => void;
+	onEvent?: (event: WorkflowProgressEvent) => void;
+	runtimeControl?: WorkflowRuntimeControl;
+	invocation?: { command: string; args?: string[] };
+}
+
+export interface WorkflowResumeResult extends WorkflowRunResult {
+	resumeAnalysis: ResumeSourceAnalysis;
+}
+
 
 
 
@@ -60,6 +87,157 @@ class StageValidationError extends Error {
 
 function isSectionExtractionError(error: unknown): error is Error {
 	return error instanceof Error && /Missing marked section|insufficient content/.test(error.message);
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await fs.access(filePath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function resolveSourceCallDir(cwd: string, sourceCallSpecifier: string): string {
+	const trimmed = sourceCallSpecifier.trim();
+	if (!trimmed) throw new Error("Resume requires a failed run path or call index.");
+	if (/^\d+$/.test(trimmed)) {
+		return path.join(cwd, "docs", "idea_refinement", getCallDirectoryName(Number.parseInt(trimmed, 10)));
+	}
+	return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed);
+}
+
+function determineResumeFailureCategory(manifest: WorkflowManifest): ResumeSourceAnalysis["failureCategory"] {
+	if (manifest.bootstrap.status !== "success") return "bootstrap_failed";
+	if (manifest.report.status === "failed") return "report_failed";
+	if (manifest.checklist.status === "failed") return "checklist_failed";
+
+	const failedLoop = manifest.loops.find((loop) => loop.stages.evaluate.status === "failed" || loop.stages.learning.status === "failed" || loop.stages.develop.status === "failed");
+	if (failedLoop?.stages.develop.status === "failed") return "loop_develop_failed";
+	if (failedLoop && (failedLoop.stages.evaluate.status === "failed" || failedLoop.stages.learning.status === "failed")) return "loop_evaluate_failed";
+	return "unknown_failed";
+}
+
+function extractFailedLoopNumber(manifest: WorkflowManifest): number | undefined {
+	const failedLoop = manifest.loops.find((loop) => loop.stages.develop.status === "failed" || loop.stages.evaluate.status === "failed" || loop.stages.learning.status === "failed");
+	return failedLoop?.loopNumber;
+}
+
+function buildResumePromptContext(analysis: ResumeSourceAnalysis, workaroundInstructions: string, finalLoopCount: number, resumeContextRelativePath: string): string {
+	const missingArtifactsLine = analysis.missingArtifacts.length > 0 ? analysis.missingArtifacts.join(", ") : "none";
+	const failureLoopLine = analysis.failedLoopNumber !== undefined ? String(analysis.failedLoopNumber) : "n/a";
+	return [
+		"",
+		"Resume context:",
+		`- Resume source run: ${analysis.sourceRelativeCallDir}`,
+		`- Failure category: ${analysis.failureCategory}`,
+		`- Failure reason: ${analysis.failureReason ?? "not recorded"}`,
+		`- Last consistent loop: ${analysis.lastConsistentLoop}`,
+		`- Failed loop (if any): ${failureLoopLine}`,
+		`- Bootstrap can be reused: ${analysis.canSkipBootstrap ? "yes" : "no"}`,
+		`- Final loop target for this resumed execution: ${finalLoopCount}`,
+		`- Missing artifacts detected during analysis: ${missingArtifactsLine}`,
+		`- Read the explicit resume instructions file before responding: ${resumeContextRelativePath}`,
+		"- Respect the workaround instructions and focus on continuing from the last consistent state rather than restarting analysis from scratch.",
+		"- Do not assume the failed partial loop is trustworthy unless explicitly restated in the resume instructions.",
+		"",
+		"User workaround instructions:",
+		workaroundInstructions,
+	].join("\n");
+}
+
+function buildResumeContextDocument(analysis: ResumeSourceAnalysis, workaroundInstructions: string, finalLoopCount: number): string {
+	return [
+		"# Resume Context",
+		"",
+		`- Source run: ${analysis.sourceRelativeCallDir}`,
+		`- Failure category: ${analysis.failureCategory}`,
+		`- Failure reason: ${analysis.failureReason ?? "not recorded"}`,
+		`- Source requested loops: ${analysis.sourceManifest.requestedLoops}`,
+		`- Last consistent loop: ${analysis.lastConsistentLoop}`,
+		`- Recommended start loop: ${analysis.recommendedStartLoop}`,
+		`- Final loop target for resumed execution: ${finalLoopCount}`,
+		`- Bootstrap can be reused: ${analysis.canSkipBootstrap ? "yes" : "no"}`,
+		`- Missing artifacts detected: ${analysis.missingArtifacts.length > 0 ? analysis.missingArtifacts.join(", ") : "none"}`,
+		"",
+		"## Workaround instructions",
+		workaroundInstructions,
+	].join("\n");
+}
+
+function cloneStageRecordForResume(target: StageRecord, source: StageRecord): void {
+	target.status = source.status;
+	target.startedAt = source.startedAt;
+	target.completedAt = source.completedAt;
+	target.exitCode = source.exitCode;
+	target.model = source.model;
+	target.stopReason = source.stopReason;
+	target.errorMessage = source.errorMessage;
+	target.usage = source.usage;
+}
+
+export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier: string): Promise<ResumeSourceAnalysis> {
+	const sourceCallDir = resolveSourceCallDir(cwd, sourceCallSpecifier);
+	const sourceManifestPath = path.join(sourceCallDir, "run.json");
+	const manifestRaw = JSON.parse(await fs.readFile(sourceManifestPath, "utf8")) as WorkflowManifest;
+	if (manifestRaw.status !== "failed") {
+		throw new Error(`Resume requires a failed run. Current status at ${sourceManifestPath}: ${manifestRaw.status}`);
+	}
+
+	const sourceRelativeCallDir = toProjectRelativePath(cwd, sourceCallDir);
+	const missingArtifacts: string[] = [];
+	const bootstrapRequiredPaths = [
+		path.join(sourceCallDir, "IDEA.md"),
+		path.join(sourceCallDir, "DIRECTIVE.md"),
+		path.join(sourceCallDir, "CRITERIA.md"),
+		path.join(sourceCallDir, "DIAGNOSIS.md"),
+		path.join(sourceCallDir, "METRICS.md"),
+		path.join(sourceCallDir, "LEARNING.md"),
+		path.join(sourceCallDir, "BACKLOG.md"),
+	];
+	for (const artifactPath of bootstrapRequiredPaths) {
+		if (!(await fileExists(artifactPath))) missingArtifacts.push(path.basename(artifactPath));
+	}
+
+	let lastConsistentLoop = 0;
+	for (let loopNumber = 1; loopNumber <= manifestRaw.completedLoops; loopNumber += 1) {
+		const loop = manifestRaw.loops.find((entry) => entry.loopNumber === loopNumber);
+		if (!loop) break;
+		const loopDir = path.join(sourceCallDir, "loops", getLoopDirectoryName(loopNumber));
+		const filesOk = await Promise.all([
+			fileExists(path.join(loopDir, "RESPONSE.md")),
+			fileExists(path.join(loopDir, "FEEDBACK.md")),
+			fileExists(path.join(loopDir, "LEARNING.md")),
+			fileExists(path.join(loopDir, "BACKLOG.md")),
+		]);
+		const stagesOk = loop.stages.develop.status === "success" && loop.stages.evaluate.status === "success" && loop.stages.learning.status === "success";
+		if (filesOk.every(Boolean) && stagesOk) lastConsistentLoop = loopNumber;
+		else break;
+	}
+
+	const bootstrapConsistent = manifestRaw.bootstrap.status === "success" && missingArtifacts.length === 0;
+	const failureCategory = determineResumeFailureCategory(manifestRaw);
+	const failedLoopNumber = extractFailedLoopNumber(manifestRaw);
+	const recommendedStartLoop = lastConsistentLoop + 1;
+	const shouldRunFinalStagesOnly = bootstrapConsistent && lastConsistentLoop >= manifestRaw.requestedLoops;
+	const lastConsistentScore = manifestRaw.loops.find((loop) => loop.loopNumber === lastConsistentLoop)?.score;
+
+	return {
+		sourceCallDir,
+		sourceRelativeCallDir,
+		sourceManifestPath,
+		sourceManifest: manifestRaw,
+		failureCategory,
+		lastConsistentLoop,
+		lastConsistentScore,
+		bootstrapConsistent,
+		failedLoopNumber,
+		recommendedStartLoop,
+		canSkipBootstrap: bootstrapConsistent,
+		shouldRunFinalStagesOnly,
+		failureReason: manifestRaw.lastError,
+		missingArtifacts,
+	};
 }
 
 function emitWorkflowEvent(
@@ -266,8 +444,9 @@ async function runBootstrapStage(options: {
 	invocation?: { command: string; args?: string[] };
 	randomNumber: number;
 	policy: DirectivePolicy;
+	promptContext?: string;
 }): Promise<Record<string, string>> {
-	const { cwd, workspace, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation, randomNumber, policy } = options;
+	const { cwd, workspace, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation, randomNumber, policy, promptContext } = options;
 
 	const BOOTSTRAP_MAX_RETRIES = 3;
 	const BOOTSTRAP_REQUIRED_FILES = ["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"];
@@ -287,12 +466,15 @@ async function runBootstrapStage(options: {
 				completedLoops: manifest.completedLoops,
 				relativeCallDir,
 				systemPrompt: INITIAL_ARTIFACTS_SYSTEM_PROMPT,
-				userPrompt: buildInitialArtifactsUserPrompt({
-					cwd,
-					workspace,
-					randomNumber,
-					policy,
-				}),
+				userPrompt: [
+					buildInitialArtifactsUserPrompt({
+						cwd,
+						workspace,
+						randomNumber,
+						policy,
+					}),
+					promptContext,
+				].filter(Boolean).join("\n\n"),
 				manifest,
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
@@ -349,8 +531,9 @@ async function runLoop(options: {
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	runtimeControl?: WorkflowRuntimeControl;
 	invocation?: { command: string; args?: string[] };
+	promptContext?: string;
 }): Promise<{ score?: number }> {
-	const { cwd, workspace, loopNumber, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation } = options;
+	const { cwd, workspace, loopNumber, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation, promptContext } = options;
 	runtimeControl?.ensureNotStopped();
 
 	const loopRandomNumber = generateRandomNumber();
@@ -385,13 +568,16 @@ async function runLoop(options: {
 		completedLoops: manifest.completedLoops,
 		relativeCallDir,
 		systemPrompt: DEVELOPMENT_SYSTEM_PROMPT,
-		userPrompt: buildDevelopmentUserPrompt({
-			cwd,
-			workspace,
-			loopNumber,
-			requestedLoops: loops,
-			randomNumber: loopRandomNumber,
-		}),
+		userPrompt: [
+			buildDevelopmentUserPrompt({
+				cwd,
+				workspace,
+				loopNumber,
+				requestedLoops: loops,
+				randomNumber: loopRandomNumber,
+			}),
+			promptContext,
+		].filter(Boolean).join("\n\n"),
 		manifest,
 		manifestPath: workspace.rootFiles.manifest,
 		onStatus,
@@ -456,12 +642,15 @@ async function runLoop(options: {
 				completedLoops: manifest.completedLoops,
 				relativeCallDir,
 				systemPrompt: EVALUATE_LEARNING_SYSTEM_PROMPT,
-				userPrompt: buildEvaluateLearningUserPrompt({
-					cwd,
-					workspace,
-					loopNumber,
-					requestedLoops: loops,
-				}),
+				userPrompt: [
+					buildEvaluateLearningUserPrompt({
+						cwd,
+						workspace,
+						loopNumber,
+						requestedLoops: loops,
+					}),
+					promptContext,
+				].filter(Boolean).join("\n\n"),
 				manifest,
 				manifestPath: workspace.rootFiles.manifest,
 				onStatus,
@@ -545,8 +734,9 @@ async function runFinalStages(options: {
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	runtimeControl?: WorkflowRuntimeControl;
 	invocation?: { command: string; args?: string[] };
+	promptContext?: string;
 }): Promise<void> {
-	const { cwd, workspace, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation } = options;
+	const { cwd, workspace, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation, promptContext } = options;
 	runtimeControl?.ensureNotStopped();
 
 	// C1 fix: Use manifest.report directly instead of creating a local StageRecord
@@ -561,12 +751,15 @@ async function runFinalStages(options: {
 		completedLoops: manifest.completedLoops,
 		relativeCallDir,
 		systemPrompt: REPORT_SYSTEM_PROMPT,
-		userPrompt: buildReportUserPrompt({
-			cwd,
-			workspace,
-			requestedLoops: loops,
-			completedLoops: manifest.completedLoops,
-		}),
+		userPrompt: [
+			buildReportUserPrompt({
+				cwd,
+				workspace,
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+			}),
+			promptContext,
+		].filter(Boolean).join("\n\n"),
 		manifest,
 		manifestPath: workspace.rootFiles.manifest,
 		onStatus,
@@ -589,12 +782,15 @@ async function runFinalStages(options: {
 		completedLoops: manifest.completedLoops,
 		relativeCallDir,
 		systemPrompt: CHECKLIST_SYSTEM_PROMPT,
-		userPrompt: buildChecklistUserPrompt({
-			cwd,
-			workspace,
-			requestedLoops: loops,
-			completedLoops: manifest.completedLoops,
-		}),
+		userPrompt: [
+			buildChecklistUserPrompt({
+				cwd,
+				workspace,
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+			}),
+			promptContext,
+		].filter(Boolean).join("\n\n"),
 		manifest,
 		manifestPath: workspace.rootFiles.manifest,
 		onStatus,
@@ -605,6 +801,203 @@ async function runFinalStages(options: {
 		invocation,
 	});
 	await writeMarkdownFile(workspace.rootFiles.checklist, checklistResult.text);
+}
+
+async function copyIfExists(sourcePath: string, targetPath: string): Promise<boolean> {
+	if (!(await fileExists(sourcePath))) return false;
+	await fs.mkdir(path.dirname(targetPath), { recursive: true });
+	await fs.copyFile(sourcePath, targetPath);
+	return true;
+}
+
+async function seedResumedWorkspace(options: {
+	cwd: string;
+	workspace: Awaited<ReturnType<typeof prepareCallWorkspace>>;
+	manifest: WorkflowManifest;
+	analysis: ResumeSourceAnalysis;
+	workaroundInstructions: string;
+	finalLoopCount: number;
+}): Promise<string> {
+	const { cwd, workspace, manifest, analysis, workaroundInstructions, finalLoopCount } = options;
+	const sourceCallDir = analysis.sourceCallDir;
+	const resumeContextPath = path.join(workspace.callDir, "RESUME_CONTEXT.md");
+	await writeMarkdownFile(resumeContextPath, buildResumeContextDocument(analysis, workaroundInstructions, finalLoopCount));
+
+	const sourceIdeaPath = path.join(sourceCallDir, "IDEA.md");
+	await copyIfExists(sourceIdeaPath, workspace.rootFiles.idea);
+
+	manifest.resume = {
+		sourceCallDir: analysis.sourceRelativeCallDir,
+		sourceCallId: analysis.sourceManifest.callId,
+		sourceStatus: analysis.sourceManifest.status,
+		sourceRequestedLoops: analysis.sourceManifest.requestedLoops,
+		lastConsistentLoop: analysis.lastConsistentLoop,
+		resumeFailureCategory: analysis.failureCategory,
+		workaroundInstructions,
+	};
+	manifest.initialRandomNumber = analysis.sourceManifest.initialRandomNumber;
+	manifest.directivePolicy = analysis.sourceManifest.directivePolicy;
+
+	if (!analysis.canSkipBootstrap) {
+		return toProjectRelativePath(cwd, resumeContextPath);
+	}
+
+	await copyIfExists(path.join(sourceCallDir, "DIRECTIVE.md"), workspace.rootFiles.directive);
+	await copyIfExists(path.join(sourceCallDir, "CRITERIA.md"), workspace.rootFiles.criteria);
+	await copyIfExists(path.join(sourceCallDir, "DIAGNOSIS.md"), workspace.rootFiles.diagnosis);
+	await copyIfExists(path.join(sourceCallDir, "METRICS.md"), workspace.rootFiles.metrics);
+
+	if (analysis.lastConsistentLoop > 0) {
+		const sourceLoopDir = path.join(sourceCallDir, "loops");
+		for (let loopNumber = 1; loopNumber <= analysis.lastConsistentLoop; loopNumber += 1) {
+			const loopDir = await ensureLoopDirectory(workspace, loopNumber);
+			const sourceEntry = analysis.sourceManifest.loops.find((loop) => loop.loopNumber === loopNumber);
+			if (!sourceEntry) break;
+			await copyIfExists(path.join(sourceLoopDir, getLoopDirectoryName(loopNumber), "RESPONSE.md"), path.join(loopDir, "RESPONSE.md"));
+			await copyIfExists(path.join(sourceLoopDir, getLoopDirectoryName(loopNumber), "FEEDBACK.md"), path.join(loopDir, "FEEDBACK.md"));
+			await copyIfExists(path.join(sourceLoopDir, getLoopDirectoryName(loopNumber), "LEARNING.md"), path.join(loopDir, "LEARNING.md"));
+			await copyIfExists(path.join(sourceLoopDir, getLoopDirectoryName(loopNumber), "BACKLOG.md"), path.join(loopDir, "BACKLOG.md"));
+
+			const clonedLoop = createLoopEntry({
+				cwd,
+				loopNumber,
+				randomNumber: sourceEntry.randomNumber,
+				loopDir,
+				logsDir: workspace.logsDir,
+			});
+			clonedLoop.startedAt = sourceEntry.startedAt;
+			clonedLoop.completedAt = sourceEntry.completedAt;
+			clonedLoop.score = sourceEntry.score;
+			clonedLoop.c7Snapshot = sourceEntry.c7Snapshot;
+			cloneStageRecordForResume(clonedLoop.stages.develop, sourceEntry.stages.develop);
+			cloneStageRecordForResume(clonedLoop.stages.evaluate, sourceEntry.stages.evaluate);
+			cloneStageRecordForResume(clonedLoop.stages.learning, sourceEntry.stages.learning);
+			manifest.loops.push(clonedLoop);
+		}
+
+		const lastLoopDir = path.join(sourceCallDir, "loops", getLoopDirectoryName(analysis.lastConsistentLoop));
+		await copyIfExists(path.join(lastLoopDir, "RESPONSE.md"), workspace.rootFiles.response);
+		await copyIfExists(path.join(lastLoopDir, "FEEDBACK.md"), workspace.rootFiles.feedback);
+		await copyIfExists(path.join(lastLoopDir, "LEARNING.md"), workspace.rootFiles.learning);
+		await copyIfExists(path.join(lastLoopDir, "BACKLOG.md"), workspace.rootFiles.backlog);
+		manifest.completedLoops = analysis.lastConsistentLoop;
+	} else {
+		await copyIfExists(path.join(sourceCallDir, "LEARNING.md"), workspace.rootFiles.learning);
+		await copyIfExists(path.join(sourceCallDir, "BACKLOG.md"), workspace.rootFiles.backlog);
+		manifest.completedLoops = 0;
+	}
+
+	cloneStageRecordForResume(manifest.bootstrap, analysis.sourceManifest.bootstrap);
+	manifest.bootstrap.status = "success";
+	return toProjectRelativePath(cwd, resumeContextPath);
+}
+
+export async function runIdeaRefinementResumeWorkflow(input: WorkflowResumeInput): Promise<WorkflowResumeResult> {
+	const { cwd, sourceCallSpecifier, finalLoopCount, workaroundInstructions, modelPattern, thinkingLevel, onStatus, onEvent, runtimeControl, invocation } = input;
+	runtimeControl?.ensureNotStopped();
+	const analysis = await analyzeFailedRunForResume(cwd, sourceCallSpecifier);
+	if (finalLoopCount < analysis.lastConsistentLoop) {
+		throw new Error(`Final loop target ${finalLoopCount} is lower than the last consistent loop ${analysis.lastConsistentLoop}.`);
+		}
+	const callNumber = await findNextCallNumber(path.join(cwd, "docs", "idea_refinement"));
+	const workspace = await prepareCallWorkspace(cwd, callNumber);
+	const relativeCallDir = toProjectRelativePath(cwd, workspace.callDir);
+	const manifest = createInitialManifest({
+		cwd,
+		workspace,
+		callNumber,
+		requestedLoops: finalLoopCount,
+		model: modelPattern,
+		thinkingLevel,
+		assumptions: [
+			...WORKFLOW_ASSUMPTIONS,
+			`Resume flow seeded from ${analysis.sourceRelativeCallDir}.`,
+			`Resume failure category: ${analysis.failureCategory}.`,
+		],
+	});
+
+	const resumeContextRelativePath = await seedResumedWorkspace({
+		cwd,
+		workspace,
+		manifest,
+		analysis,
+		workaroundInstructions,
+		finalLoopCount,
+	});
+	const promptContext = buildResumePromptContext(analysis, workaroundInstructions, finalLoopCount, resumeContextRelativePath);
+	await saveManifest(workspace.rootFiles.manifest, manifest);
+	emitWorkflowEvent(onEvent, {
+		type: "workflow_started",
+		relativeCallDir,
+		requestedLoops: finalLoopCount,
+		completedLoops: manifest.completedLoops,
+		message: `Resume workflow started in ${relativeCallDir} from ${analysis.sourceRelativeCallDir}`,
+	});
+
+	let latestScore = analysis.lastConsistentScore;
+	try {
+		if (!analysis.canSkipBootstrap) {
+			const initialRandomNumber = generateRandomNumber();
+			const directivePolicy: DirectivePolicy = determineDirectivePolicy(initialRandomNumber);
+			manifest.initialRandomNumber = initialRandomNumber;
+			manifest.directivePolicy = directivePolicy;
+			await saveManifest(workspace.rootFiles.manifest, manifest);
+			await runBootstrapStage({
+				cwd, workspace, loops: finalLoopCount, modelPattern, thinkingLevel, manifest, relativeCallDir,
+				onStatus, onEvent, runtimeControl, invocation,
+				randomNumber: initialRandomNumber, policy: directivePolicy, promptContext,
+			});
+		}
+
+		for (let loopNumber = analysis.recommendedStartLoop; loopNumber <= finalLoopCount; loopNumber += 1) {
+			const { score } = await runLoop({
+				cwd, workspace, loopNumber, loops: finalLoopCount, modelPattern, thinkingLevel, manifest, relativeCallDir,
+				onStatus, onEvent, runtimeControl, invocation, promptContext,
+			});
+			if (typeof score === "number") latestScore = score;
+		}
+
+		await runFinalStages({
+			cwd, workspace, loops: finalLoopCount, modelPattern, thinkingLevel, manifest, relativeCallDir,
+			onStatus, onEvent, runtimeControl, invocation, promptContext,
+		});
+
+		manifest.status = "success";
+		manifest.completedAt = new Date().toISOString();
+		await saveManifest(workspace.rootFiles.manifest, manifest);
+		onStatus?.(`Resume workflow completed in ${relativeCallDir}`);
+		emitWorkflowEvent(onEvent, {
+			type: "workflow_completed",
+			relativeCallDir,
+			requestedLoops: finalLoopCount,
+			completedLoops: manifest.completedLoops,
+			message: `Resume workflow completed in ${relativeCallDir}`,
+			score: latestScore,
+		});
+
+		return {
+			callDir: workspace.callDir,
+			relativeCallDir,
+			manifest,
+			latestScore,
+			resumeAnalysis: analysis,
+		};
+	} catch (error) {
+		manifest.status = "failed";
+		manifest.completedAt = new Date().toISOString();
+		manifest.lastError = error instanceof Error ? error.message : String(error);
+		await saveManifest(workspace.rootFiles.manifest, manifest);
+		onStatus?.(`Resume workflow failed: ${manifest.lastError}`);
+		emitWorkflowEvent(onEvent, {
+			type: "workflow_failed",
+			relativeCallDir,
+			requestedLoops: finalLoopCount,
+			completedLoops: manifest.completedLoops,
+			message: `Resume workflow failed: ${manifest.lastError}`,
+			isError: true,
+		});
+		throw error;
+	}
 }
 
 export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promise<WorkflowRunResult> {

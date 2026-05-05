@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.7.0 - 2026-05-05
+
+### Added
+- Explicit `/idea-refine-resume` command for resuming failed runs from existing `docs/idea_refinement/artifacts_call_NN/` artifacts.
+- Resume analysis flow that accepts either a failed run path or the execution index `NN` and lets the user define a new final loop target.
+- Interactive workaround-instruction capture for resumed runs, with context-aware prefilled analysis shown in the editor.
+- `RESUME_CONTEXT.md` generation in resumed runs for auditability and prompt grounding.
+- Resume-aware manifest metadata describing the source failed run, last consistent loop, failure category, and workaround instructions.
+- Regression coverage for resuming from both loop-stage failures and bootstrap failures.
+
+### Changed
+- Resume workflows now seed themselves from the last consistent loop instead of trusting partially failed loop artifacts.
+- Resume execution can intelligently skip bootstrap when the failed source run already has a structurally consistent bootstrap state.
+- Resume execution can continue to a user-specified final loop target rather than being forced to the original requested loop count.
+
+### Fixed
+- Enabled recovery from failed runs regardless of failure category by deterministically analyzing the failed manifest and artifact set before resuming.
+- Preserved the standard `/idea-refine` workflow unchanged while isolating resume behavior behind the dedicated resume command/flow.
+
 ## 1.6.1 - 2026-05-05
 
 ### Changed

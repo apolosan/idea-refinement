@@ -8,14 +8,16 @@ Think of it as **autoresearch** — inspired by the concept Andrej Karpathy popu
 
 While it is designed to refine raw ideas into actionable plans, it works just as powerfully for **intelligent and convincing problem solving**: feed it a bug, an architectural tension, a product decision, or a research question, and the workflow will dissect it, propose alternatives, evaluate them with epistemic rigor, and deliver a prioritized checklist of next steps.
 
-## What's New in 1.6.1
+## What's New in 1.7.0
 
-This release focuses on workflow resilience for structurally invalid stage outputs:
+This release adds an explicit failed-run resume flow without changing the standard workflow:
 
-- evaluate+learning stages now retry automatically when the returned text is missing required file markers or is truncated mid-artifact;
-- raw failed evaluate attempts are now persisted to `loops/loop_NN/evaluate-raw-attempt-N.md` for forensic recovery;
-- stage success signaling now happens only after structural validation succeeds, avoiding misleading `Stage completed` messages for invalid outputs;
-- new regression coverage verifies recovery from truncated evaluate responses.
+- new `/idea-refine-resume` command for resuming from an existing failed `artifacts_call_NN` run;
+- resume source can be provided either as a direct path or as the execution index `NN`;
+- the resume flow analyzes the failed manifest and artifacts to detect the last consistent loop, failure category, missing artifacts, and whether bootstrap can be reused;
+- users can provide workaround instructions and a new final loop target before the resumed execution starts;
+- resumed runs generate `RESUME_CONTEXT.md` and carry forward only the last consistent state instead of trusting partially failed loop artifacts;
+- regression coverage now verifies resume recovery from both bootstrap failures and failed loop stages.
 
 ## Installation
 
@@ -103,6 +105,35 @@ Equivalent commands are also available:
 
 - `/idea-refine-pause`
 - `/idea-refine-stop`
+- `/idea-refine-resume`
+
+### Resuming a failed run
+
+Use:
+
+```text
+/idea-refine-resume
+```
+
+or pass the execution index/path directly:
+
+```text
+/idea-refine-resume 4
+```
+
+```text
+/idea-refine-resume docs/idea_refinement/artifacts_call_04
+```
+
+The resume flow will:
+
+1. inspect the failed run and identify the last consistent loop;
+2. detect the failure category and whether bootstrap artifacts can be reused;
+3. ask for the new final loop target;
+4. open an editor prefilled with contextual analysis so you can provide workaround instructions;
+5. start a new resumed run seeded from the last consistent state.
+
+The standard `/idea-refine` workflow is not modified by this resume flow.
 
 ## Real-Time Monitor
 

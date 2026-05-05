@@ -21,6 +21,7 @@ export type StageName = "bootstrap" | "develop" | "evaluate" | "learning" | "rep
 export type WorkflowStatus = "running" | "success" | "failed";
 export type StageStatus = "pending" | "running" | "success" | "failed";
 export type DirectivePolicy = "OPTIMIZATION" | "CREATIVITY/EXPLORATION";
+export type ResumeFailureCategory = "bootstrap_failed" | "loop_develop_failed" | "loop_evaluate_failed" | "report_failed" | "checklist_failed" | "unknown_failed";
 
 export interface StageUsage {
 	input: number;
@@ -120,6 +121,33 @@ export interface LoopManifestEntry {
 	};
 }
 
+export interface ResumeMetadata {
+	sourceCallDir: string;
+	sourceCallId: string;
+	sourceStatus: WorkflowStatus;
+	sourceRequestedLoops: number;
+	lastConsistentLoop: number;
+	resumeFailureCategory: ResumeFailureCategory;
+	workaroundInstructions: string;
+}
+
+export interface ResumeSourceAnalysis {
+	sourceCallDir: string;
+	sourceRelativeCallDir: string;
+	sourceManifestPath: string;
+	sourceManifest: WorkflowManifest;
+	failureCategory: ResumeFailureCategory;
+	lastConsistentLoop: number;
+	lastConsistentScore?: number;
+	bootstrapConsistent: boolean;
+	failedLoopNumber?: number;
+	recommendedStartLoop: number;
+	canSkipBootstrap: boolean;
+	shouldRunFinalStagesOnly: boolean;
+	failureReason?: string;
+	missingArtifacts: string[];
+}
+
 export interface WorkflowManifest {
 	schemaVersion: number;
 	status: WorkflowStatus;
@@ -135,6 +163,7 @@ export interface WorkflowManifest {
 	thinkingLevel?: string;
 	initialRandomNumber?: number;
 	directivePolicy?: DirectivePolicy;
+	resume?: ResumeMetadata;
 	files: {
 		idea: string;
 		directive: string;

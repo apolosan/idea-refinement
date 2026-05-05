@@ -8,7 +8,7 @@ import {
 	setIdeaRefinementMonitorDetail,
 } from "./lib/ui-monitor.ts";
 import { WorkflowRuntimeControl } from "./lib/workflow-runtime-control.ts";
-import { runIdeaRefinementWorkflow } from "./lib/workflow.ts";
+import { analyzeFailedRunForResume, runIdeaRefinementResumeWorkflow, runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
 import { runResponseValidatorCheck } from "./lib/validator-check.ts";
 
@@ -50,9 +50,9 @@ async function collectIdea(args: string, ctx: ExtensionCommandContext): Promise<
 	return idea && idea.length > 0 ? idea : undefined;
 }
 
-async function collectLoopCount(ctx: ExtensionCommandContext): Promise<number | undefined> {
+async function collectLoopCount(ctx: ExtensionCommandContext, title = "How many development loops do you want to run?", placeholder = "Enter a positive integer"): Promise<number | undefined> {
 	while (true) {
-		const input = await ctx.ui.input("How many development loops do you want to run?", "Enter a positive integer");
+		const input = await ctx.ui.input(title, placeholder);
 		if (input === undefined) return undefined;
 
 		const parsed = parsePositiveInteger(input);
@@ -60,6 +60,55 @@ async function collectLoopCount(ctx: ExtensionCommandContext): Promise<number | 
 
 		ctx.ui.notify("Invalid value. Enter a positive integer.", "warning");
 	}
+}
+
+async function collectResumeSourceSpecifier(args: string, ctx: ExtensionCommandContext): Promise<string | undefined> {
+	const inline = args.trim();
+	if (inline.length > 0) return inline;
+	const input = await ctx.ui.input("Failed run path or execution index (NN)", "Example: 4 or docs/idea_refinement/artifacts_call_04");
+	const trimmed = input?.trim();
+	return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function collectResumeFinalLoopCount(ctx: ExtensionCommandContext, lastConsistentLoop: number, suggestedFinalLoop: number): Promise<number | undefined> {
+	while (true) {
+		const input = await ctx.ui.input(
+			"Final loop target for resumed execution",
+			`Enter a positive integer >= ${lastConsistentLoop || 1} (suggested: ${suggestedFinalLoop})`,
+		);
+		if (input === undefined) return undefined;
+		const parsed = parsePositiveInteger(input);
+		if (parsed !== undefined && parsed >= lastConsistentLoop) return parsed;
+		ctx.ui.notify(`Invalid value. Enter a positive integer >= ${lastConsistentLoop}.`, "warning");
+	}
+}
+
+function formatResumeAnalysisSummary(analysis: Awaited<ReturnType<typeof analyzeFailedRunForResume>>): string {
+	return [
+		`- Source run: ${analysis.sourceRelativeCallDir}`,
+		`- Failure category: ${analysis.failureCategory}`,
+		`- Failure reason: ${analysis.failureReason ?? "not recorded"}`,
+		`- Last consistent loop: ${analysis.lastConsistentLoop}`,
+		`- Recommended start loop: ${analysis.recommendedStartLoop}`,
+		`- Can skip bootstrap: ${analysis.canSkipBootstrap ? "yes" : "no"}`,
+		`- Missing artifacts: ${analysis.missingArtifacts.length > 0 ? analysis.missingArtifacts.join(", ") : "none"}`,
+	].join("\n");
+}
+
+async function collectResumeInstructions(ctx: ExtensionCommandContext, analysisSummary: string): Promise<string | undefined> {
+	const template = [
+		"# Resume workaround instructions",
+		"",
+		analysisSummary,
+		"",
+		"## Instructions",
+		"- Describe any workaround instructions, constraints, exclusions, or special handling for the resumed run.",
+		"- Keep the resumed execution anchored to the last consistent loop unless there is explicit new evidence.",
+		"",
+	].join("\n");
+	const result = await ctx.ui.editor("Resume workaround instructions", template);
+	const trimmed = result?.trim();
+	return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
 function getCurrentModelPattern(ctx: ExtensionCommandContext): string | undefined {
@@ -249,6 +298,164 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 				}
 				renderMonitor();
 				ctx.ui.notify(`Idea refinement workflow failed: ${message}`, "error");
+			} finally {
+				runInProgress = false;
+				if (heartbeatTimer) {
+					clearInterval(heartbeatTimer);
+					heartbeatTimer = undefined;
+				}
+				runtimeControl.finishRun();
+				ctx.ui.setStatus(STATUS_KEY, undefined);
+				ctx.ui.setWidget(WIDGET_KEY, undefined);
+				ctx.ui.setWorkingMessage?.(undefined);
+				ctx.ui.setWorkingVisible?.(false);
+			}
+		},
+	});
+
+	pi.registerCommand("idea-refine-resume", {
+		description: "Resume a failed idea-refinement run from the last consistent loop using a failed call path or execution index (NN)",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("/idea-refine-resume requires interactive mode.", "error");
+				return;
+			}
+			if (!ctx.model) {
+				ctx.ui.notify("Select a model before running /idea-refine-resume.", "error");
+				return;
+			}
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current agent to finish before starting /idea-refine-resume.", "warning");
+				return;
+			}
+			if (runInProgress) {
+				ctx.ui.notify("An idea-refinement run is already in progress.", "warning");
+				return;
+			}
+
+			const sourceCallSpecifier = await collectResumeSourceSpecifier(args, ctx);
+			if (!sourceCallSpecifier) {
+				ctx.ui.notify("Resume canceled: no failed run path or execution index was provided.", "info");
+				return;
+			}
+
+			let analysis;
+			try {
+				analysis = await analyzeFailedRunForResume(ctx.cwd, sourceCallSpecifier);
+			} catch (error) {
+				ctx.ui.notify(`Resume analysis failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
+
+			const analysisSummary = formatResumeAnalysisSummary(analysis);
+			ctx.ui.notify(`Resume analysis ready: ${analysis.sourceRelativeCallDir} • last consistent loop ${analysis.lastConsistentLoop} • ${analysis.failureCategory}`, "info");
+
+			const finalLoopCount = await collectResumeFinalLoopCount(
+				ctx,
+				analysis.lastConsistentLoop,
+				Math.max(analysis.sourceManifest.requestedLoops, analysis.lastConsistentLoop),
+			);
+			if (finalLoopCount === undefined) {
+				ctx.ui.notify("Resume canceled before the final loop target was defined.", "info");
+				return;
+			}
+
+			const workaroundInstructions = await collectResumeInstructions(ctx, analysisSummary);
+			if (!workaroundInstructions) {
+				ctx.ui.notify("Resume canceled: workaround instructions were not provided.", "info");
+				return;
+			}
+
+			const monitorState = createIdeaRefinementMonitorState();
+			let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+			let lastConsoleEventMessage: string | undefined;
+			let lastWorkingMessage: string | undefined;
+			let spinnerIndex = 0;
+
+			const setWorking = (message: string | undefined) => {
+				const limited = message && message.length > 120 ? `${message.slice(0, 117)}...` : message;
+				if (limited !== lastWorkingMessage) {
+					lastWorkingMessage = limited;
+					ctx.ui.setWorkingMessage?.(limited);
+				}
+			};
+
+			const renderMonitor = () => {
+				monitorState.elapsedMs = runtimeControl.getElapsedMs();
+				monitorState.isPaused = runtimeControl.isPaused();
+				monitorState.spinnerFrame = runtimeControl.isPaused() ? "⏸" : STATUS_SPINNER_FRAMES[spinnerIndex % STATUS_SPINNER_FRAMES.length];
+				const statusLine = buildIdeaRefinementStatusLine(monitorState);
+				ctx.ui.setStatus(STATUS_KEY, statusLine);
+				ctx.ui.setWidget(WIDGET_KEY, buildIdeaRefinementWidgetLines(monitorState));
+			};
+
+			const updateUiStatus = (message: string | undefined) => {
+				setIdeaRefinementMonitorDetail(monitorState, message);
+				const suffix = buildPauseResumeHelp(runtimeControl.isPaused());
+				setWorking(message ? `${message} • ${suffix}` : suffix);
+				renderMonitor();
+			};
+
+			const handleProgressEvent = (event: Parameters<typeof applyIdeaRefinementProgressEvent>[1]) => {
+				applyIdeaRefinementProgressEvent(monitorState, event);
+				if (shouldNotifyProgressEvent(event) && event.message !== lastConsoleEventMessage) {
+					lastConsoleEventMessage = event.message;
+					ctx.ui.notify(event.message, progressEventLevel(event));
+				}
+				renderMonitor();
+			};
+
+			runInProgress = true;
+			runtimeControl.startRun();
+			lastWorkingMessage = undefined;
+			ctx.ui.setWorkingVisible?.(true);
+			ctx.ui.setWorkingMessage?.(`Initializing resume workflow monitor... • ${buildPauseResumeHelp(false)}`);
+			ctx.ui.notify(
+				`Starting /idea-refine-resume from ${analysis.sourceRelativeCallDir} to loop ${finalLoopCount}. Shortcuts: ${PAUSE_SHORTCUT} pause/resume, ${STOP_SHORTCUT} stop.`,
+				"info",
+			);
+			renderMonitor();
+
+			heartbeatTimer = setInterval(() => {
+				spinnerIndex = (spinnerIndex + 1) % STATUS_SPINNER_FRAMES.length;
+				renderMonitor();
+				if (runtimeControl.isPaused()) setWorking(buildPauseResumeHelp(true));
+			}, HEARTBEAT_MS);
+
+			try {
+				const result = await runIdeaRefinementResumeWorkflow({
+					cwd: ctx.cwd,
+					sourceCallSpecifier,
+					finalLoopCount,
+					workaroundInstructions,
+					modelPattern: getCurrentModelPattern(ctx),
+					onStatus: updateUiStatus,
+					onEvent: handleProgressEvent,
+					runtimeControl,
+				});
+
+				const responsePath = path.join(result.callDir, "RESPONSE.md");
+				runResponseValidatorCheck(responsePath).catch((err) => {
+					console.error("[idea-refinement] Validator check failed:", err);
+				});
+
+				renderMonitor();
+				const lastScoreSuffix = typeof result.latestScore === "number" ? ` • final score ${result.latestScore}/100` : "";
+				ctx.ui.notify(`Idea refinement resume completed: ${result.relativeCallDir}${lastScoreSuffix}`, "info");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				if (monitorState.workflowStatus !== "failed") {
+					handleProgressEvent({
+						type: "workflow_failed",
+						relativeCallDir: monitorState.relativeCallDir ?? "",
+						requestedLoops: finalLoopCount,
+						completedLoops: monitorState.completedLoops,
+						message: `Resume workflow failed: ${message}`,
+						isError: true,
+					});
+				}
+				renderMonitor();
+				ctx.ui.notify(`Idea refinement resume failed: ${message}`, "error");
 			} finally {
 				runInProgress = false;
 				if (heartbeatTimer) {

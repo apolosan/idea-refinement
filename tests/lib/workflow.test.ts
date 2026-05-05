@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { runIdeaRefinementWorkflow } from "../../lib/workflow.ts";
+import { runIdeaRefinementResumeWorkflow, runIdeaRefinementWorkflow } from "../../lib/workflow.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "idea-refinement-tests-"));
@@ -378,6 +378,142 @@ export async function run(): Promise<void> {
 		assert.ok(feedback.includes("Overall score: 70/100"));
 
 		console.log("✓ B23: evaluate+learning retry logic works (truncated 1x, succeeds on 2nd)");
+	});
+
+	// R1: resume flow can continue from a failed run specified by execution index (NN)
+	await withTempDir(async (dir) => {
+		const invocation = await createFakePiScript(dir);
+		const seedResult = await runIdeaRefinementWorkflow({
+			cwd: dir,
+			idea: "Seed run for resume test",
+			loops: 1,
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+
+		const manifestPath = path.join(seedResult.callDir, "run.json");
+		const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8"));
+		manifest.status = "failed";
+		manifest.requestedLoops = 2;
+		manifest.completedLoops = 1;
+		manifest.lastError = "Synthetic evaluate failure for resume";
+		manifest.loops.push({
+			loopNumber: 2,
+			randomNumber: 77,
+			startedAt: new Date().toISOString(),
+			responsePath: `${manifest.callDir}/loops/loop_02/RESPONSE.md`,
+			feedbackPath: `${manifest.callDir}/loops/loop_02/FEEDBACK.md`,
+			learningPath: `${manifest.callDir}/loops/loop_02/LEARNING.md`,
+			stages: {
+				develop: {
+					name: "develop",
+					status: "success",
+					logPath: `${manifest.callDir}/logs/loop_02_develop.jsonl`,
+					stderrPath: `${manifest.callDir}/logs/loop_02_develop.stderr.log`,
+				},
+				evaluate: {
+					name: "evaluate",
+					status: "failed",
+					logPath: `${manifest.callDir}/logs/loop_02_evaluate.jsonl`,
+					stderrPath: `${manifest.callDir}/logs/loop_02_evaluate.stderr.log`,
+					errorMessage: "Synthetic evaluate failure",
+				},
+				learning: {
+					name: "learning",
+					status: "pending",
+					logPath: `${manifest.callDir}/logs/loop_02_learning.jsonl`,
+					stderrPath: `${manifest.callDir}/logs/loop_02_learning.stderr.log`,
+				},
+			},
+		});
+		await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+
+		const resumed = await runIdeaRefinementResumeWorkflow({
+			cwd: dir,
+			sourceCallSpecifier: "1",
+			finalLoopCount: 2,
+			workaroundInstructions: "Resume from the last consistent loop and ignore the synthetic failed partial loop.",
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+
+		assert.equal(resumed.manifest.status, "success");
+		assert.equal(resumed.manifest.requestedLoops, 2);
+		assert.equal(resumed.manifest.completedLoops, 2);
+		assert.equal(resumed.resumeAnalysis.lastConsistentLoop, 1);
+		assert.equal(resumed.resumeAnalysis.failureCategory, "loop_evaluate_failed");
+		assert.equal(resumed.manifest.resume?.sourceCallId, "artifacts_call_01");
+		await fs.access(path.join(resumed.callDir, "RESUME_CONTEXT.md"));
+		await fs.access(path.join(resumed.callDir, "loops", "loop_01", "RESPONSE.md"));
+		await fs.access(path.join(resumed.callDir, "loops", "loop_02", "RESPONSE.md"));
+
+		console.log("✓ R1: resume flow continues from failed run using execution index (NN)");
+	});
+
+	// R2: resume flow can recover from a bootstrap failure using existing artifacts_call_NN source metadata
+	await withTempDir(async (dir) => {
+		const sourceDir = path.join(dir, "docs", "idea_refinement", "artifacts_call_01");
+		await fs.mkdir(sourceDir, { recursive: true });
+		await fs.writeFile(path.join(sourceDir, "IDEA.md"), "Resume bootstrap failure idea\n", "utf-8");
+		const failedManifest = {
+			schemaVersion: 1,
+			status: "failed",
+			cwd: dir,
+			callNumber: 1,
+			callId: "artifacts_call_01",
+			callDir: "docs/idea_refinement/artifacts_call_01",
+			startedAt: new Date().toISOString(),
+			completedAt: new Date().toISOString(),
+			requestedLoops: 1,
+			completedLoops: 0,
+			files: {
+				idea: "docs/idea_refinement/artifacts_call_01/IDEA.md",
+				directive: "docs/idea_refinement/artifacts_call_01/DIRECTIVE.md",
+				learning: "docs/idea_refinement/artifacts_call_01/LEARNING.md",
+				criteria: "docs/idea_refinement/artifacts_call_01/CRITERIA.md",
+				diagnosis: "docs/idea_refinement/artifacts_call_01/DIAGNOSIS.md",
+				metrics: "docs/idea_refinement/artifacts_call_01/METRICS.md",
+				backlog: "docs/idea_refinement/artifacts_call_01/BACKLOG.md",
+				response: "docs/idea_refinement/artifacts_call_01/RESPONSE.md",
+				feedback: "docs/idea_refinement/artifacts_call_01/FEEDBACK.md",
+				report: "docs/idea_refinement/artifacts_call_01/REPORT.md",
+				checklist: "docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
+			},
+			bootstrap: {
+				name: "bootstrap",
+				status: "failed",
+				logPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.jsonl",
+				stderrPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.stderr.log",
+				errorMessage: "Synthetic bootstrap failure",
+			},
+			report: { name: "report", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/report.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/report.stderr.log" },
+			checklist: { name: "checklist", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.stderr.log" },
+			loops: [],
+			assumptions: [],
+			lastError: "Synthetic bootstrap failure",
+		};
+		await fs.writeFile(path.join(sourceDir, "run.json"), `${JSON.stringify(failedManifest, null, 2)}\n`, "utf-8");
+
+		const invocation = await createFakePiScript(dir);
+		const resumed = await runIdeaRefinementResumeWorkflow({
+			cwd: dir,
+			sourceCallSpecifier: "1",
+			finalLoopCount: 1,
+			workaroundInstructions: "Rebuild bootstrap artifacts and continue normally.",
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+
+		assert.equal(resumed.manifest.status, "success");
+		assert.equal(resumed.resumeAnalysis.failureCategory, "bootstrap_failed");
+		assert.equal(resumed.resumeAnalysis.canSkipBootstrap, false);
+		assert.equal(resumed.manifest.completedLoops, 1);
+		await fs.access(path.join(resumed.callDir, "DIRECTIVE.md"));
+
+		console.log("✓ R2: resume flow rebuilds from bootstrap failure and completes");
 	});
 
 	// C7 now tracks refinement-artifact changes rather than project source changes.
