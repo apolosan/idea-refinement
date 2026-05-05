@@ -499,8 +499,14 @@ async function runBootstrapStage(options: {
 			if (!isSectionExtractionError(parseError)) throw parseError;
 			lastBootstrapError = parseError instanceof Error ? parseError : new Error(String(parseError));
 			const rawPath = path.join(workspace.callDir, `bootstrap-raw-attempt-${attempt}.md`);
-			if (parseError instanceof StageValidationError) {
-				await writeMarkdownFile(rawPath, parseError.result.text);
+			try {
+				if (parseError instanceof StageValidationError) {
+					await writeMarkdownFile(rawPath, parseError.result.text);
+				}
+			} catch (rawWriteError) {
+				// Best-effort: saving the raw attempt is for debugging only;
+				// failure here must not break the retry flow.
+				console.error(`[idea-refinement] Failed to save raw bootstrap attempt ${attempt}:`, rawWriteError);
 			}
 			onStatus?.(`⚠ Bootstrap attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES} failed: ${lastBootstrapError.message}`);
 			if (attempt === BOOTSTRAP_MAX_RETRIES) {
@@ -679,10 +685,16 @@ async function runLoop(options: {
 			if (!isRetryableEvaluateValidationError(parseError)) throw parseError;
 			lastEvaluateParseError = parseError instanceof Error ? parseError : new Error(String(parseError));
 			const rawPath = path.join(loopDir, `evaluate-raw-attempt-${attempt}.md`);
-			if (parseError instanceof StageValidationError) {
-				await writeMarkdownFile(rawPath, parseError.result.text);
-			} else if (evaluateLearningResult) {
-				await writeMarkdownFile(rawPath, evaluateLearningResult.text);
+			try {
+				if (parseError instanceof StageValidationError) {
+					await writeMarkdownFile(rawPath, parseError.result.text);
+				} else if (evaluateLearningResult) {
+					await writeMarkdownFile(rawPath, evaluateLearningResult.text);
+				}
+			} catch (rawWriteError) {
+				// Best-effort: saving the raw attempt is for debugging only;
+				// failure here must not break the retry flow.
+				console.error(`[idea-refinement] Failed to save raw evaluate attempt ${attempt}:`, rawWriteError);
 			}
 			onStatus?.(`⚠ Loop ${loopNumber}/${loops}: evaluate output parse failed on attempt ${attempt}/${EVALUATE_MAX_RETRIES}: ${lastEvaluateParseError.message}`);
 			if (attempt === EVALUATE_MAX_RETRIES) {

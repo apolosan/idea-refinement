@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.1 - 2026-05-05
+
+### Added
+- Progressive marker-matching in `extractMarkedSections` with 4 strategies: strict, same-line content, markdown-code-fence stripping, and lenient whitespace matching.
+- Diagnostic context in marker-extraction errors: lists all missing/insufficient sections, reports begin/end marker counts, and shows a text snippet near the first missing marker.
+- Test coverage for same-line markers, code-fence stripping, lenient matching, diagnostic errors, and batch missing-section reporting.
+
+### Changed
+- `extractMarkedSections` now tries progressively more lenient regex patterns before failing, reducing bootstrap and evaluate-stage failures caused by minor LLM output formatting variations.
+- Error messages from `extractMarkedSections` now list all missing and insufficient sections at once instead of failing on the first one.
+
+### Fixed
+- Bootstrap stage `"Missing marked section for DIRECTIVE.md"` error that caused the entire workflow to stall after 3 retries, even when the LLM output contained the correct markers in a slightly different format (e.g. wrapped in markdown code fences, content on same line, or no newline before end marker).
+- Wrapped `writeMarkdownFile` calls in bootstrap and evaluate retry catch-blocks with their own try/catch, preventing a secondary empty-content write error from masking the original extraction failure and blocking the retry loop.
+
 ## 1.8.0 - 2026-05-05
 
 ### Added

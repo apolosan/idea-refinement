@@ -10,16 +10,13 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.8.0
+## What's New in 1.8.1
 
-This release hardens the workflow engine in the areas that most affect auditability, recoverability, and deterministic execution:
+This release fixes the leading cause of bootstrap-stage failures and workflow stalls:
 
-- critical workflow artifacts are now persisted through **atomic-by-default writes** (same-directory temp file + flush + rename), reducing partial-write risk for files such as `run.json`, `DIRECTIVE.md`, `LEARNING.md`, `BACKLOG.md`, `REPORT.md`, and `CHECKLIST.md`;
-- `artifacts_call_NN` allocation is now **collision-safe**, using exclusive directory creation with bounded retry instead of a fragile scan-then-create sequence;
-- the evaluate stage now treats a valid `Overall score: NN/100` in `FEEDBACK.md` as a **required success gate** rather than a best-effort parse;
-- missing or malformed overall scores are now handled as **retryable validation failures**, preserving raw attempt captures before the workflow fails definitively after retry exhaustion;
-- resume seeding now routes copied critical artifacts through the same hardened persistence path;
-- regression coverage was expanded to cover interrupted writes, concurrent allocation, partial-start allocation, score-gate retries, and retry exhaustion.
+- the marker parser (`extractMarkedSections`) now uses **progressive matching** with 4 strategies (strict → same-line → code-fence-stripped → lenient), eliminating failures caused by minor LLM output formatting variations such as markdown code fences, content on the same line as the begin marker, or missing newlines before the end marker;
+- error messages from the parser now **report all missing and insufficient sections at once** and include diagnostic context (marker counts, text snippet), making it much easier to diagnose the root cause when a retry still fails;
+- `writeMarkdownFile` calls in the bootstrap and evaluate retry catch-blocks are now wrapped in their own try/catch, preventing a secondary empty-content write error from masking the original extraction failure and **breaking the retry loop**.
 
 ## Installation
 
