@@ -48,6 +48,20 @@ export interface WorkflowRunResult {
 
 
 
+class StageValidationError extends Error {
+	readonly result: StageExecutionResult;
+
+	constructor(message: string, result: StageExecutionResult) {
+		super(message);
+		this.name = "StageValidationError";
+		this.result = result;
+	}
+}
+
+function isSectionExtractionError(error: unknown): error is Error {
+	return error instanceof Error && /Missing marked section|insufficient content/.test(error.message);
+}
+
 function emitWorkflowEvent(
 	onEvent: ((event: WorkflowProgressEvent) => void) | undefined,
 	event: WorkflowProgressEvent,
@@ -113,6 +127,7 @@ async function runManagedStage(options: {
 	onStatus?: (message: string | undefined) => void;
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	statusMessage: string;
+	resultValidator?: (result: StageExecutionResult) => Promise<void> | void;
 	/** Inactivity timeout override for this stage (ms). Default handled by runner. */
 	timeoutMs?: number;
 	runtimeControl?: WorkflowRuntimeControl;
@@ -138,6 +153,7 @@ async function runManagedStage(options: {
 		onStatus,
 		onEvent,
 		statusMessage,
+		resultValidator,
 		timeoutMs,
 		runtimeControl,
 		invocation,
@@ -199,6 +215,12 @@ async function runManagedStage(options: {
 				if (mappedEvent) emitWorkflowEvent(onEvent, mappedEvent);
 			},
 		});
+		try {
+			await resultValidator?.(result);
+		} catch (validationError) {
+			const message = validationError instanceof Error ? validationError.message : String(validationError);
+			throw new StageValidationError(message, result);
+		}
 		markStageSuccess(record, result);
 		await saveManifest(manifestPath, manifest);
 		emitWorkflowEvent(onEvent, {
@@ -253,39 +275,44 @@ async function runBootstrapStage(options: {
 	let lastBootstrapError: Error | undefined;
 
 	for (let attempt = 1; attempt <= BOOTSTRAP_MAX_RETRIES; attempt++) {
-		const bootstrapResult = await runManagedStage({
-			cwd,
-			protectedRoots: [workspace.callDir],
-			modelPattern,
-			thinkingLevel,
-			record: manifest.bootstrap,
-			stageName: "bootstrap",
-			requestedLoops: loops,
-			completedLoops: manifest.completedLoops,
-			relativeCallDir,
-			systemPrompt: INITIAL_ARTIFACTS_SYSTEM_PROMPT,
-			userPrompt: buildInitialArtifactsUserPrompt({
-				cwd,
-				workspace,
-				randomNumber,
-				policy,
-			}),
-			manifest,
-			manifestPath: workspace.rootFiles.manifest,
-			onStatus,
-			onEvent,
-			statusMessage: `Generating initial artifacts in ${relativeCallDir}${attempt > 1 ? ` (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})` : ""}`,
-			runtimeControl,
-			invocation,
-		});
-
 		try {
+			const bootstrapResult = await runManagedStage({
+				cwd,
+				protectedRoots: [workspace.callDir],
+				modelPattern,
+				thinkingLevel,
+				record: manifest.bootstrap,
+				stageName: "bootstrap",
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+				relativeCallDir,
+				systemPrompt: INITIAL_ARTIFACTS_SYSTEM_PROMPT,
+				userPrompt: buildInitialArtifactsUserPrompt({
+					cwd,
+					workspace,
+					randomNumber,
+					policy,
+				}),
+				manifest,
+				manifestPath: workspace.rootFiles.manifest,
+				onStatus,
+				onEvent,
+				statusMessage: `Generating initial artifacts in ${relativeCallDir}${attempt > 1 ? ` (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})` : ""}`,
+				resultValidator: (result) => {
+					extractMarkedSections(result.text, BOOTSTRAP_REQUIRED_FILES);
+				},
+				runtimeControl,
+				invocation,
+			});
 			sections = extractMarkedSections(bootstrapResult.text, BOOTSTRAP_REQUIRED_FILES);
 			break; // Success — exit retry loop
 		} catch (parseError) {
+			if (!isSectionExtractionError(parseError)) throw parseError;
 			lastBootstrapError = parseError instanceof Error ? parseError : new Error(String(parseError));
 			const rawPath = path.join(workspace.callDir, `bootstrap-raw-attempt-${attempt}.md`);
-			await writeMarkdownFile(rawPath, bootstrapResult.text);
+			if (parseError instanceof StageValidationError) {
+				await writeMarkdownFile(rawPath, parseError.result.text);
+			}
 			onStatus?.(`⚠ Bootstrap attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES} failed: ${lastBootstrapError.message}`);
 			if (attempt === BOOTSTRAP_MAX_RETRIES) {
 				throw new Error(
@@ -409,34 +436,67 @@ async function runLoop(options: {
 	// D5 fix: Merged evaluate+learning into a single subprocess call to eliminate
 	// one cold-start per loop. The combined prompt produces FEEDBACK.md, LEARNING.md,
 	// and BACKLOG.md in one pass, halving evaluate+learning overhead.
-	const evaluateLearningResult = await runManagedStage({
-		cwd,
-		protectedRoots: [workspace.callDir],
-		modelPattern,
-		thinkingLevel,
-		record: loopEntry.stages.evaluate,
-		stageName: "evaluate",
-		loopNumber,
-		requestedLoops: loops,
-		completedLoops: manifest.completedLoops,
-		relativeCallDir,
-		systemPrompt: EVALUATE_LEARNING_SYSTEM_PROMPT,
-		userPrompt: buildEvaluateLearningUserPrompt({
-			cwd,
-			workspace,
-			loopNumber,
-			requestedLoops: loops,
-		}),
-		manifest,
-		manifestPath: workspace.rootFiles.manifest,
-		onStatus,
-		onEvent,
-		statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning`,
-		runtimeControl,
-		invocation,
-	});
-	// Extract all three sections from the merged output
-	const evalLearnSections = extractMarkedSections(evaluateLearningResult.text, ["FEEDBACK.md", "LEARNING.md", "BACKLOG.md"]);
+	const EVALUATE_REQUIRED_FILES = ["FEEDBACK.md", "LEARNING.md", "BACKLOG.md"] as const;
+	const EVALUATE_MAX_RETRIES = 3;
+	let evaluateLearningResult: StageExecutionResult | undefined;
+	let evalLearnSections: Record<string, string> | undefined;
+	let lastEvaluateParseError: Error | undefined;
+
+	for (let attempt = 1; attempt <= EVALUATE_MAX_RETRIES; attempt += 1) {
+		try {
+			evaluateLearningResult = await runManagedStage({
+				cwd,
+				protectedRoots: [workspace.callDir],
+				modelPattern,
+				thinkingLevel,
+				record: loopEntry.stages.evaluate,
+				stageName: "evaluate",
+				loopNumber,
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+				relativeCallDir,
+				systemPrompt: EVALUATE_LEARNING_SYSTEM_PROMPT,
+				userPrompt: buildEvaluateLearningUserPrompt({
+					cwd,
+					workspace,
+					loopNumber,
+					requestedLoops: loops,
+				}),
+				manifest,
+				manifestPath: workspace.rootFiles.manifest,
+				onStatus,
+				onEvent,
+				statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning${attempt > 1 ? ` (attempt ${attempt}/${EVALUATE_MAX_RETRIES})` : ""}`,
+				resultValidator: (result) => {
+					extractMarkedSections(result.text, [...EVALUATE_REQUIRED_FILES]);
+				},
+				runtimeControl,
+				invocation,
+			});
+			evalLearnSections = extractMarkedSections(evaluateLearningResult.text, [...EVALUATE_REQUIRED_FILES]);
+			break;
+		} catch (parseError) {
+			if (!isSectionExtractionError(parseError)) throw parseError;
+			lastEvaluateParseError = parseError instanceof Error ? parseError : new Error(String(parseError));
+			const rawPath = path.join(loopDir, `evaluate-raw-attempt-${attempt}.md`);
+			if (parseError instanceof StageValidationError) {
+				await writeMarkdownFile(rawPath, parseError.result.text);
+			} else if (evaluateLearningResult) {
+				await writeMarkdownFile(rawPath, evaluateLearningResult.text);
+			}
+			onStatus?.(`⚠ Loop ${loopNumber}/${loops}: evaluate output parse failed on attempt ${attempt}/${EVALUATE_MAX_RETRIES}: ${lastEvaluateParseError.message}`);
+			if (attempt === EVALUATE_MAX_RETRIES) {
+				throw new Error(
+					`Failed to extract evaluate/learning sections after ${EVALUATE_MAX_RETRIES} attempts; last raw text at ${rawPath}. Cause: ${lastEvaluateParseError.message}`,
+				);
+			}
+		}
+	}
+
+	if (!evaluateLearningResult || !evalLearnSections) {
+		throw new Error(`Evaluate/learning extraction failed unexpectedly. Last error: ${lastEvaluateParseError?.message}`);
+	}
+
 	await writeMarkdownFile(workspace.rootFiles.feedback, evalLearnSections["FEEDBACK.md"]);
 	await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), evalLearnSections["FEEDBACK.md"]);
 

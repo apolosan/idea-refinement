@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.1 - 2026-05-05
+
+### Changed
+- Delayed `stage_completed` signaling in `lib/workflow.ts` until after structural output validation succeeds, preventing misleading completion messages for invalid stage payloads.
+- Added structural stage-result validation support to `runManagedStage()` so stage success is gated by parseable artifact output, not just subprocess exit.
+
+### Fixed
+- Added retry handling for the merged evaluate+learning stage when `FEEDBACK.md`, `LEARNING.md`, or `BACKLOG.md` markers are missing or truncated.
+- Persisted raw failed evaluate attempts to `loops/loop_NN/evaluate-raw-attempt-N.md` for forensic recovery and auditing.
+- Added regression coverage for truncated evaluate output recovery in `tests/lib/workflow.test.ts`.
+- Eliminated the failure mode where a truncated evaluate response could abort the entire workflow after a technically successful subprocess run.
+
 ## 1.6.0 - 2026-05-05
 
 ### Added

@@ -8,17 +8,14 @@ Think of it as **autoresearch** — inspired by the concept Andrej Karpathy popu
 
 While it is designed to refine raw ideas into actionable plans, it works just as powerfully for **intelligent and convincing problem solving**: feed it a bug, an architectural tension, a product decision, or a research question, and the workflow will dissect it, propose alternatives, evaluate them with epistemic rigor, and deliver a prioritized checklist of next steps.
 
-## What's New in 1.6.0
+## What's New in 1.6.1
 
-This release includes all updates made in the current session:
+This release focuses on workflow resilience for structurally invalid stage outputs:
 
-- section-aware C3 validation: the response validator now counts alternatives only inside `## Minimum alternatives matrix`;
-- new regression tests for the C3 stray-pipe false-positive and for a valid in-section control matrix;
-- spawned-subprocess argv measurement in `runPiStage()` with an exact sentinel baseline;
-- a controlled `stdin` prompt-transport pilot that removes the raw checklist `userPrompt` from spawned argv on the checklist stage;
-- stricter workflow prompt rules that reject ledger-free metric claims, setup-only after-states, vague cost labels, and non-decision narrative;
-- supporting governance artifacts produced for this session: inspected-source ledger, environment dependency ledger, prompt-transport pilot note, and recomputed backlog/metrics for `artifacts_call_02`;
-- a small monitor copy refinement: the widget now shows `working...` instead of repeating the active tool line in the current-status row.
+- evaluate+learning stages now retry automatically when the returned text is missing required file markers or is truncated mid-artifact;
+- raw failed evaluate attempts are now persisted to `loops/loop_NN/evaluate-raw-attempt-N.md` for forensic recovery;
+- stage success signaling now happens only after structural validation succeeds, avoiding misleading `Stage completed` messages for invalid outputs;
+- new regression coverage verifies recovery from truncated evaluate responses.
 
 ## Installation
 

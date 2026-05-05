@@ -275,6 +275,111 @@ export async function run(): Promise<void> {
 		console.log("✓ B22: bootstrap retry logic works (fails 2x, succeeds on 3rd)");
 	});
 
+	// B23: evaluate+learning retry logic - first attempt returns truncated FEEDBACK block, second succeeds
+	await withTempDir(async (dir) => {
+		const counterPath = path.join(dir, "evaluate-attempt-counter.txt");
+		await fs.writeFile(counterPath, "0", "utf-8");
+
+		const scriptPath = path.join(dir, "fake-pi-evaluate-retry.mjs");
+		const dirForScript = dir.replace(/\\/g, "\\\\");
+		const scriptLines = [
+			'import { readFileSync, writeFileSync } from "node:fs";',
+			'import { join } from "node:path";',
+			'const args = process.argv.slice(2);',
+			'let sp = "";',
+			'for (let i = 0; i < args.length - 1; i++) {',
+			'  if (args[i] === "--append-system-prompt") { try { sp = readFileSync(args[i+1], "utf-8"); } catch {} break; }',
+			'}',
+			'function tag(n, c) { return "<<<BEGIN FILE: " + n + ">>>\\n" + c + "\\n<<<END FILE: " + n + ">>>"; }',
+			'let r;',
+			'if (sp.includes("initial artifacts")) {',
+			'  r = [',
+			'    tag("DIRECTIVE.md", "# Dir\\nSelected Policy: OPTIMIZATION\\n## OPT\\nFocus on measurable improvement.\\n## CREAT\\nExplore novel approaches."),',
+			'    tag("LEARNING.md", "# Learn\\n[HYP] First entry."),',
+			'    tag("CRITERIA.md", "# Crit\\n## V\\nBefore/after with metrics."),',
+			'    tag("DIAGNOSIS.md", "# Diag\\n[FACT] Initial assessment.\\n[INF] Key inference.\\n## Current vs Proposed\\nCurrent: unvalidated. Proposed: structured."),',
+			'    tag("METRICS.md", "# Met\\n## M1\\n- Scale: 1-10\\n- Baseline: 3/10\\n- Target: 7/10"),',
+			'    tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|pend|Validate|\\n|B2|P1|pend|Explore|")',
+			'  ].join("\\n");',
+			'} else if (sp.includes("iterative idea development")) {',
+			'  r = [',
+			'    "# Response", "## Loop framing", "Analyzing focus.", "## Focused loop diagnosis",',
+			'    "[FACT] Evidence: src/index.ts.", "[FACT] More: lib/workflow.ts.", "## Operational questions and applied external research", "What to measure?",',
+			'    "## Minimum alternatives matrix", "|Alt|P|M|B|C|R|", "|---|---|---|---|---|---|", "|A|X|Y|Z|L|N|", "|B|X2|Y2|Z2|M|S|", "|C|X3|Y3|Z3|H|Ma|",',
+			'    "## Current state vs. proposed state", "before: baseline 5/10, after: target 7/10 (40% improvement)",',
+			'    "## Experiment protocol", "Run tests.", "## Iteration decision", "Keep A. Adjust B.",',
+			'    "## Explicit discards of this iteration", "Discard C.", "## Next focuses", "Test later.",',
+			'    "[INFERENCE] Bottleneck identified.", "[RISK] Over-engineering risk."',
+			'  ].join("\\n");',
+			'} else if (sp.includes("combined evaluation") || sp.includes("evaluation and learning consolidation")) {',
+			`  const counterFile = join("${dirForScript}", "evaluate-attempt-counter.txt");`,
+			'  let count = parseInt(readFileSync(counterFile, "utf-8"), 10);',
+			'  count++;',
+			'  writeFileSync(counterFile, String(count), "utf-8");',
+			'  if (count === 1) {',
+			'    r = "<<<BEGIN FILE: FEEDBACK.md>>>\\n# FEEDBACK\\nThis first attempt is intentionally truncated before the end marker.";',
+			'  } else {',
+			'    const fb = [',
+			'      "# Feedback", "## Overall verdict", "Solid.", "## Evidence supporting the verdict", "[FACT] Template.",',
+			'      "## Before/after comparability evaluation", "Before: x. After: y.", "## Epistemic audit", "Tags ok.",',
+			'      "## Criterion-by-criterion evaluation", "Pass.", "## Final iteration decision", "Keep.",',
+			'      "## Objective recommendations for the next iteration", "Evidence.", "## Scoreboard",',
+			'      "Process Rigor score: 72/100", "Material Result score: 68/100", "Overall score: 70/100"',
+			'    ].join("\\n");',
+			'    r = [',
+			'      tag("FEEDBACK.md", fb),',
+			'      tag("LEARNING.md", "# Learn\\n[HYP] Works.\\n[DECISION] Maintain."),',
+			'      tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|done|X|\\n|B2|P1|pend|Y|\\n|B3|P2|new|Z|")',
+			'    ].join("\\n");',
+			'  }',
+			'} else if (sp.includes("consolidating") || sp.includes("Investigation Report")) {',
+			'  r = [',
+			'    "# Investigation Report", "## Executive summary", "Done.", "## Context and investigation object", "Analyzed.",',
+			'    "## Applied methodology", "Iterative.", "## Main findings", "[FACT] Findings.",',
+			'    "## Score evolution", "70/100.", "## Firm decisions and active hypotheses", "[DECISION] OK.",',
+			'    "## Identified risks and mitigations", "[RISK] Complex.", "## Final recommendations", "Proceed.",',
+			'    "## Cross-references", "All."',
+			'  ].join("\\n");',
+			'} else if (sp.includes("action checklist") || sp.includes("Action Checklist")) {',
+			'  r = [',
+			'    "# Action Checklist", "## Immediate actions (P0)", "- Validate [DECISION]",',
+			'    "## Short-term actions (P1)", "- Implement", "## Medium-term actions (P2)", "- Monitor",',
+			'    "## Long-term actions (P3)", "- Scale", "## Dependencies between actions", "P0->P1.",',
+			'    "## Acceptance criteria per action", "Measurable."',
+			'  ].join("\\n");',
+			'} else {',
+			'  r = "DEFAULT len=" + sp.length;',
+			'}',
+			'process.stdout.write(JSON.stringify({type:"session"})+"\\n");',
+			'process.stdout.write(JSON.stringify({type:"message_end",message:{role:"assistant",content:[{type:"text",text:r}],model:"test",usage:{input:100,output:50,cacheRead:0,cacheWrite:0,totalTokens:150,cost:{total:0}},stopReason:"stop"}})+"\\n");',
+			'process.exit(0);',
+		];
+
+		await fs.writeFile(scriptPath, scriptLines.join("\n"), "utf-8");
+		const invocation = { command: process.execPath, args: [scriptPath] };
+		const statuses: string[] = [];
+
+		const result = await runIdeaRefinementWorkflow({
+			cwd: dir,
+			idea: "Test evaluate retry logic",
+			loops: 1,
+			onStatus: (msg) => { if (msg) statuses.push(msg); },
+			onEvent: () => {},
+			invocation,
+		});
+
+		assert.equal(result.manifest.status, "success", "Workflow should succeed after evaluate retry");
+		const finalCount = parseInt(await fs.readFile(counterPath, "utf-8"), 10);
+		assert.equal(finalCount, 2, `Expected 2 evaluate attempts, got ${finalCount}`);
+		const rawAttemptFile = path.join(result.callDir, "loops", "loop_01", "evaluate-raw-attempt-1.md");
+		await fs.access(rawAttemptFile);
+		assert.ok(statuses.some((s) => s.includes("evaluate output parse failed on attempt 1/3")));
+		const feedback = await fs.readFile(path.join(result.callDir, "FEEDBACK.md"), "utf-8");
+		assert.ok(feedback.includes("Overall score: 70/100"));
+
+		console.log("✓ B23: evaluate+learning retry logic works (truncated 1x, succeeds on 2nd)");
+	});
+
 	// C7 now tracks refinement-artifact changes rather than project source changes.
 	await withTempDir(async (dir) => {
 		const statuses: string[] = [];
