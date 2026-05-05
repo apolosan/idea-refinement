@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.3 - 2026-05-05
+
+### Added
+- Explicit tool-call payload guidance in `lib/prompts.ts` for `read` and `bash`, including exact JSON shapes and a single retry-after-fix rule.
+- `npm test` script in `package.json` for the project test suite.
+
+### Changed
+- Simplified and shortened the stage prompts in `lib/prompts.ts` to reduce model overhead during bootstrap, development, evaluation, report, and checklist generation.
+- Rolled out `stdin` prompt transport across all workflow stages in `lib/workflow.ts` instead of limiting it to `CHECKLIST.md`.
+- Updated `README.md` to document the leaner prompt set, full `stdin` transport, and the corrected exploration/exploitation wording.
+
+### Fixed
+- Reduced the prompt-induced first-attempt failure pattern where some models would emit malformed `read` or `bash` tool payloads and only recover on a second try.
+- Reduced avoidable bootstrap latency tied to overly verbose stage instructions and heavier subprocess prompt transport.
+
 ## 1.8.2 - 2026-05-05
 
 ### Added

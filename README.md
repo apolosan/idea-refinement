@@ -10,18 +10,21 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.8.2
+## What's New in 1.8.3
 
-This release fixes the most concerning workflow failure mode reported in real usage: the bootstrap/resume subprocess could keep alternating between `Analyzing instructions...` and `validating output...` indefinitely, even after a valid payload had already been emitted.
+This release focuses on the two practical problems seen in real usage:
 
-The fix is structural:
+1. some models were wasting a first tool call on malformed `read` / `bash` payloads and only succeeding on the second try;
+2. bootstrap could spend too long in `Drafting response...`, especially while generating six artifacts from an over-instructed prompt.
 
-- `runPiStage()` now supports **early success capture**: if a stage-specific validator confirms that the latest assistant payload is already structurally valid, the parent extension terminates the subprocess immediately instead of waiting for it to exit on its own;
-- the bootstrap and merged evaluate+learning stages now reuse their own validators for both normal post-exit validation and early termination decisions;
-- the runner now applies **explicit subprocess-loop protection** by capping assistant `message_end` responses per stage and failing clearly if the child keeps looping instead of terminating;
-- `message_end` handling is now restricted to **assistant-role messages only**, and once a valid payload is captured, later looping messages can no longer overwrite the saved final result.
+Applied changes:
 
-This makes `/idea-refine` and `/idea-refine-resume` substantially more reliable under pathological subprocess behavior: valid payloads finish quickly, and invalid endless loops fail deterministically instead of appearing frozen.
+- simplified and tightened all stage prompts in `lib/prompts.ts`, removing excess wording and contradictory guidance;
+- added an explicit tool-call contract with exact payload shapes for `read` and `bash`, plus a one-retry correction rule for malformed tool calls;
+- rolled out `stdin` prompt transport to all workflow stages, reducing raw prompt exposure in subprocess argv and slightly lowering subprocess startup overhead;
+- kept the existing structural safeguards from 1.8.2, including early-success capture and subprocess-loop protection.
+
+Net effect: less prompt burden on the model, fewer avoidable first-attempt tool-call errors, and a leaner bootstrap stage without changing the artifact contract or the workflow sequence.
 
 ## Installation
 
@@ -205,8 +208,7 @@ The extension does not rely on the current agent to orchestrate the process.
 It itself:
 
 - generates non-deterministic random numbers via Web Crypto API (CSPRNG with rejection sampling) to guide the workflow;
-- uses an **Epsilon-greedy reinforcement learning strategy** to balance exploitation of what is already working with controlled exploration of alternatives;
-- preserves that reinforcement-learning behavior **on the user's own machine**, so the refinement policy can keep improving locally even when the workflow is executed with third-party models — including heterogeneous setups that mix different model families;
+- uses an **Epsilon-greedy exploration/exploitation strategy** to balance what is already working with controlled exploration of alternatives inside the workflow;
 - spawns its own `pi` subprocesses in sequence;
 - injects stage-specific system prompts;
 - captures the final text of each subprocess;
@@ -221,9 +223,9 @@ It itself:
 
 The C3 validator now treats `## Minimum alternatives matrix` as the only valid scope for alternatives counting. Pipe-formatted rows outside that section no longer satisfy the matrix requirement.
 
-### Checklist-stage stdin pilot
+### Full stdin prompt transport
 
-To reduce raw prompt exposure in subprocess argv, the extension now supports an internal prompt-transport mode that sends the real prompt through `stdin`. In this release, the production pilot is intentionally limited to the final `CHECKLIST.md` stage so the rollout stays reversible and easy to verify.
+To reduce raw prompt exposure in subprocess argv, the extension sends workflow user prompts through `stdin` in all stages. This keeps the stage contracts unchanged while making prompt transport lighter and more uniform.
 
 ## Environment Variable
 
@@ -244,7 +246,6 @@ This environment variable is used internally by the extension to protect artifac
 ## Implementation Decisions
 
 - The active session model is reused across all stages.
-- The active session thinking level is also propagated to workflow subprocesses.
 - The real-time monitor is fed by structured events (`message_update`, `tool_execution_start`, `tool_execution_end`) emitted by each `pi --mode json` subprocess.
 - Status animation is driven by the parent extension with its own heartbeat instead of depending only on Pi's default working indicator.
 - Stage execution uses inactivity timeouts (default 5 minutes) rather than absolute wall-clock deadlines.
@@ -261,7 +262,7 @@ This environment variable is used internally by the extension to protect artifac
 Run local tests with Node 22+:
 
 ```bash
-node --experimental-strip-types tests/run-tests.ts
+npm test
 ```
 
 Tests cover:
@@ -272,11 +273,10 @@ Tests cover:
 - `Overall score` extraction;
 - artifact path protection and subprocess tool restrictions;
 - section-aware C3 validation, including stray-pipe rejection outside the matrix section;
-- spawned-subprocess argv baseline capture and the `stdin` transport pilot;
+- spawned-subprocess argv baseline capture and full `stdin` prompt transport;
 - inactivity timeout handling;
 - pause/resume/stop runtime control;
 - elapsed time and animated monitor rendering;
-- thinking level propagation to subprocesses;
 - execution and thinking monitor in real time;
 - smoke import of the main extension.
 

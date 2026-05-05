@@ -57,16 +57,19 @@ export async function run(): Promise<void> {
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /BACKLOG\.md/i);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /OPTIMIZATION/);
 	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /CREATIVITY\/EXPLORATION/);
+	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /read => \{"path"/i);
+	assert.match(INITIAL_ARTIFACTS_SYSTEM_PROMPT, /bash => \{"command"/i);
 	console.log("✓ INITIAL_ARTIFACTS_SYSTEM_PROMPT contains required elements");
 
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /Minimum alternatives matrix/i);
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /RESPONSE\.md/i);
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /source ledger|evidence ledger/i);
 	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /scope touched, regression surface, and validation burden/i);
+	assert.match(DEVELOPMENT_SYSTEM_PROMPT, /Most loops should rely on read only/i);
 	console.log("✓ DEVELOPMENT_SYSTEM_PROMPT contains required elements");
 
 	assert.match(REPORT_SYSTEM_PROMPT, /Investigation Report/i);
-	assert.match(REPORT_SYSTEM_PROMPT, /epistemic tag/i);
+	assert.match(REPORT_SYSTEM_PROMPT, /Epistemic contract|epistemic tag/i);
 	console.log("✓ REPORT_SYSTEM_PROMPT contains required elements");
 
 	assert.match(CHECKLIST_SYSTEM_PROMPT, /Action Checklist/i);

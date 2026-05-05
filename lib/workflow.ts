@@ -493,6 +493,7 @@ async function runBootstrapStage(options: {
 				onStatus,
 				onEvent,
 				statusMessage: `Generating initial artifacts in ${relativeCallDir}${attempt > 1 ? ` (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})` : ""}`,
+				userPromptTransport: "stdin",
 				earlySuccessValidator: (normalizedAssistantText) => {
 					try {
 						validateBootstrapText(normalizedAssistantText);
@@ -610,6 +611,7 @@ async function runLoop(options: {
 		onStatus,
 		onEvent,
 		statusMessage: `Loop ${loopNumber}/${loops}: developing RESPONSE.md`,
+		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
 	});
@@ -690,6 +692,7 @@ async function runLoop(options: {
 				onStatus,
 				onEvent,
 				statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning${attempt > 1 ? ` (attempt ${attempt}/${EVALUATE_MAX_RETRIES})` : ""}`,
+				userPromptTransport: "stdin",
 				earlySuccessValidator: (normalizedAssistantText) => {
 					try {
 						validateEvaluateLearningText(normalizedAssistantText);
@@ -813,6 +816,7 @@ async function runFinalStages(options: {
 		onStatus,
 		onEvent,
 		statusMessage: `Consolidating final report: REPORT.md`,
+		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
 	});
