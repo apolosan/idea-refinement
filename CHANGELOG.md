@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.2 - 2026-05-05
+
+### Added
+- Early-success stage capture in `lib/runner.ts`, allowing the parent extension to terminate a subprocess as soon as a structurally valid final artifact payload is already available.
+- Explicit subprocess-loop protection in `lib/runner.ts` via a capped number of assistant `message_end` responses per stage, with a clear error instead of an indefinite bootstrap/evaluate stall.
+- Regression coverage for both failure modes: valid bootstrap payload followed by endless subprocess looping, and explicit assistant-response loop exhaustion.
+
+### Changed
+- `runPiStage()` now filters `message_end` handling to assistant-role messages only and can stop early when a stage-specific validator confirms the output is already valid.
+- Bootstrap and merged evaluate+learning stages now reuse their structural validators both for normal post-exit validation and for early termination when valid output is seen before subprocess exit.
+
+### Fixed
+- Resolved the bootstrap/resume hang where the monitor alternated indefinitely between `Analyzing instructions...` and `validating output...` even after the subprocess had already emitted a valid payload.
+- Prevented stuck subprocesses from blocking `/idea-refine` and `/idea-refine-resume` until inactivity timeout by converting repeated assistant-response loops into deterministic terminal failures.
+- Eliminated the risk of later looping assistant messages overwriting an already-captured valid stage result before process shutdown.
+
 ## 1.8.1 - 2026-05-05
 
 ### Added

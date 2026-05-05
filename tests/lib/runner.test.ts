@@ -194,6 +194,87 @@ export async function run(): Promise<void> {
 	});
 	console.log("✓ runPiStage stdin pilot removes raw userPrompt from spawned argv");
 
+	// Early success capture should terminate a looping subprocess after a valid assistant payload appears.
+	await withTempDir(async (dir) => {
+		const scriptPath = path.join(dir, "loop-after-valid.js");
+		const logPath = path.join(dir, "logs", "loop-after-valid.jsonl");
+		const stderrPath = path.join(dir, "logs", "loop-after-valid.stderr.log");
+		await fs.writeFile(
+			scriptPath,
+			[
+				"function out(event) { process.stdout.write(JSON.stringify(event) + '\\n'); }",
+				"out({ type: 'session' });",
+				"setTimeout(() => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'VALID PAYLOAD' }], stopReason: 'stop' } }), 10);",
+				"setInterval(() => {",
+				"  out({ type: 'message_update', assistantMessageEvent: { type: 'thinking_start' }, message: { role: 'assistant' } });",
+				"  out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'LOOPING PAYLOAD' }], stopReason: 'stop' } });",
+				"}, 100);",
+			].join("\n"),
+			"utf8",
+		);
+
+		const start = Date.now();
+		const result = await runPiStage({
+			cwd: dir,
+			systemPrompt: "system",
+			userPrompt: "user",
+			logPath,
+			stderrPath,
+			protectedRoots: [],
+			earlySuccessValidator: (text) => text.includes("VALID PAYLOAD"),
+			invocation: {
+				command: process.execPath,
+				args: [scriptPath],
+			},
+		});
+		const elapsed = Date.now() - start;
+		assert.equal(result.text.trim(), "VALID PAYLOAD");
+		assert.ok(elapsed < 2000, `Expected early termination before long loop, got ${elapsed}ms`);
+		console.log("✓ runPiStage terminates early when valid output is captured");
+	});
+
+	// Loop-protection should abort stages that keep producing assistant responses without terminating.
+	await withTempDir(async (dir) => {
+		const scriptPath = path.join(dir, "assistant-loop.js");
+		const logPath = path.join(dir, "logs", "assistant-loop.jsonl");
+		const stderrPath = path.join(dir, "logs", "assistant-loop.stderr.log");
+		await fs.writeFile(
+			scriptPath,
+			[
+				"function out(event) { process.stdout.write(JSON.stringify(event) + '\\n'); }",
+				"out({ type: 'session' });",
+				"let count = 0;",
+				"const timer = setInterval(() => {",
+				"  count += 1;",
+				"  out({ type: 'message_update', assistantMessageEvent: { type: 'thinking_start' }, message: { role: 'assistant' } });",
+				"  out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'assistant turn #' + count }], stopReason: 'stop' } });",
+				"}, 50);",
+				"process.on('SIGTERM', () => { clearInterval(timer); process.exit(0); });",
+			].join("\n"),
+			"utf8",
+		);
+
+		await assert.rejects(
+			async () => {
+				await runPiStage({
+					cwd: dir,
+					systemPrompt: "system",
+					userPrompt: "user",
+					logPath,
+					stderrPath,
+					protectedRoots: [],
+					maxAssistantMessages: 4,
+					invocation: {
+						command: process.execPath,
+						args: [scriptPath],
+					},
+				});
+			},
+			/possible subprocess loop/i,
+		);
+		console.log("✓ runPiStage aborts explicit assistant-response loops");
+	});
+
 	// Test inactivity timeout mechanism
 	await withTempDir(async (dir) => {
 		// Script that hangs indefinitely (never exits, never sends message_end)

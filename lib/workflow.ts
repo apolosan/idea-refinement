@@ -313,6 +313,7 @@ async function runManagedStage(options: {
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	statusMessage: string;
 	resultValidator?: (result: StageExecutionResult) => Promise<void> | void;
+	earlySuccessValidator?: (normalizedAssistantText: string) => boolean;
 	/** Inactivity timeout override for this stage (ms). Default handled by runner. */
 	timeoutMs?: number;
 	runtimeControl?: WorkflowRuntimeControl;
@@ -339,6 +340,7 @@ async function runManagedStage(options: {
 		onEvent,
 		statusMessage,
 		resultValidator,
+		earlySuccessValidator,
 		timeoutMs,
 		runtimeControl,
 		invocation,
@@ -372,6 +374,7 @@ async function runManagedStage(options: {
 			stderrPath,
 			protectedRoots,
 			invocation,
+			earlySuccessValidator,
 			timeoutMs,
 			runtimeControl,
 			onProgress: (detail) => {
@@ -457,6 +460,9 @@ async function runBootstrapStage(options: {
 
 	const BOOTSTRAP_MAX_RETRIES = 3;
 	const BOOTSTRAP_REQUIRED_FILES = ["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"];
+	const validateBootstrapText = (text: string): void => {
+		extractMarkedSections(text, BOOTSTRAP_REQUIRED_FILES);
+	};
 	let sections: Record<string, string> | undefined;
 	let lastBootstrapError: Error | undefined;
 
@@ -487,8 +493,16 @@ async function runBootstrapStage(options: {
 				onStatus,
 				onEvent,
 				statusMessage: `Generating initial artifacts in ${relativeCallDir}${attempt > 1 ? ` (attempt ${attempt}/${BOOTSTRAP_MAX_RETRIES})` : ""}`,
+				earlySuccessValidator: (normalizedAssistantText) => {
+					try {
+						validateBootstrapText(normalizedAssistantText);
+						return true;
+					} catch {
+						return false;
+					}
+				},
 				resultValidator: (result) => {
-					extractMarkedSections(result.text, BOOTSTRAP_REQUIRED_FILES);
+					validateBootstrapText(result.text);
 				},
 				runtimeControl,
 				invocation,
@@ -637,6 +651,13 @@ async function runLoop(options: {
 	// and BACKLOG.md in one pass, halving evaluate+learning overhead.
 	const EVALUATE_REQUIRED_FILES = ["FEEDBACK.md", "LEARNING.md", "BACKLOG.md"] as const;
 	const EVALUATE_MAX_RETRIES = 3;
+	const validateEvaluateLearningText = (text: string): void => {
+		const sections = extractMarkedSections(text, [...EVALUATE_REQUIRED_FILES]);
+		const score = extractOverallScore(sections["FEEDBACK.md"] ?? "");
+		if (typeof score !== "number") {
+			throw new Error("Missing or invalid Overall score in FEEDBACK.md");
+		}
+	};
 	let evaluateLearningResult: StageExecutionResult | undefined;
 	let evalLearnSections: Record<string, string> | undefined;
 	let lastEvaluateParseError: Error | undefined;
@@ -669,12 +690,16 @@ async function runLoop(options: {
 				onStatus,
 				onEvent,
 				statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning${attempt > 1 ? ` (attempt ${attempt}/${EVALUATE_MAX_RETRIES})` : ""}`,
-				resultValidator: (result) => {
-					const sections = extractMarkedSections(result.text, [...EVALUATE_REQUIRED_FILES]);
-					const score = extractOverallScore(sections["FEEDBACK.md"] ?? "");
-					if (typeof score !== "number") {
-						throw new Error("Missing or invalid Overall score in FEEDBACK.md");
+				earlySuccessValidator: (normalizedAssistantText) => {
+					try {
+						validateEvaluateLearningText(normalizedAssistantText);
+						return true;
+					} catch {
+						return false;
 					}
+				},
+				resultValidator: (result) => {
+					validateEvaluateLearningText(result.text);
 				},
 				runtimeControl,
 				invocation,

@@ -242,6 +242,71 @@ export async function run(): Promise<void> {
 		console.log("✓ runIdeaRefinementWorkflow executes complete workflow with 1 loop");
 	});
 
+	// B21: bootstrap should terminate early when a valid payload is emitted but the subprocess keeps looping.
+	await withTempDir(async (dir) => {
+		const scriptPath = path.join(dir, "fake-pi-bootstrap-loop.mjs");
+		const scriptLines = [
+			'import { readFileSync } from "node:fs";',
+			'function tag(n, c) { return "<<<BEGIN FILE: " + n + ">>>\\n" + c + "\\n<<<END FILE: " + n + ">>>"; }',
+			'const validBootstrap = [',
+			'  tag("DIRECTIVE.md", "# Dir\\nSelected Policy: OPTIMIZATION\\n## OPT\\nFocus on measurable improvement.\\n## CREAT\\nExplore novel approaches."),',
+			'  tag("LEARNING.md", "# Learn\\n[HYP] First entry."),',
+			'  tag("CRITERIA.md", "# Crit\\n## V\\nBefore/after with metrics."),',
+			'  tag("DIAGNOSIS.md", "# Diag\\n[FACT] Initial assessment.\\n[INF] Key inference.\\n## Current vs Proposed\\nCurrent: unvalidated. Proposed: structured."),',
+			'  tag("METRICS.md", "# Met\\n## M1\\n- Scale: 1-10\\n- Baseline: 3/10\\n- Target: 7/10"),',
+			'  tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|pend|Validate|\\n|B2|P1|pend|Explore|")',
+			'].join("\\n");',
+			'const validResponse = ["# Response","## Loop framing","Analyzing focus.","## Focused loop diagnosis","[FACT] Evidence: src/index.ts.","[FACT] More: lib/workflow.ts.","## Operational questions and applied external research","What to measure?","## Minimum alternatives matrix","|Alt|P|M|B|C|R|","|---|---|---|---|---|---|","|A|X|Y|Z|L|N|","|B|X2|Y2|Z2|M|S|","## Current state vs. proposed state","before: baseline 5/10, after: target 7/10 (40% improvement)","## Experiment protocol","Run tests.","## Iteration decision","Keep A. Adjust B.","## Explicit discards of this iteration","Discard C.","## Next focuses","Test later.","[INFERENCE] Bottleneck identified.","[RISK] Over-engineering risk."].join("\\n");',
+			'const validFeedback = [',
+			'  tag("FEEDBACK.md", ["# Feedback","## Overall verdict","Solid.","## Evidence supporting the verdict","[FACT] Template.","## Before/after comparability evaluation","Before: x. After: y.","## Epistemic audit","Tags ok.","## Criterion-by-criterion evaluation","Pass.","## Final iteration decision","Keep.","## Objective recommendations for the next iteration","Evidence.","## Scoreboard","Process Rigor score: 72/100","Material Result score: 68/100","Overall score: 70/100"].join("\\n")),',
+			'  tag("LEARNING.md", "# Learn\\n[HYP] Works.\\n[DECISION] Maintain."),',
+			'  tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|done|X|\\n|B2|P1|pend|Y|\\n|B3|P2|new|Z|")',
+			'].join("\\n");',
+			'const validReport = ["# Investigation Report","## Executive summary","Done.","## Context and investigation object","Analyzed.","## Applied methodology","Iterative.","## Main findings","[FACT] Findings.","## Score evolution","70/100.","## Firm decisions and active hypotheses","[DECISION] OK.","## Identified risks and mitigations","[RISK] Complex.","## Final recommendations","Proceed.","## Cross-references","All."].join("\\n");',
+			'const validChecklist = ["# Action Checklist","## Immediate actions (P0)","- Validate [DECISION]","## Short-term actions (P1)","- Implement","## Medium-term actions (P2)","- Monitor","## Long-term actions (P3)","- Scale","## Dependencies between actions","P0->P1.","## Acceptance criteria per action","Measurable."].join("\\n");',
+			'let systemPrompt = "";',
+			'const args = process.argv.slice(2);',
+			'for (let i = 0; i < args.length - 1; i++) { if (args[i] === "--append-system-prompt") { systemPrompt = readFileSync(args[i+1], "utf8"); break; } }',
+			'function out(event) { process.stdout.write(JSON.stringify(event) + "\\n"); }',
+			'process.on("SIGTERM", () => process.exit(0));',
+			'out({ type: "session" });',
+			'if (systemPrompt.includes("initial artifacts")) {',
+			'  setTimeout(() => out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validBootstrap }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } }), 10);',
+			'  setInterval(() => {',
+			'    out({ type: "message_update", assistantMessageEvent: { type: "thinking_start" }, message: { role: "assistant" } });',
+			'    out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "bootstrap-loop" }], model: "test", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  }, 100);',
+			'} else if (systemPrompt.includes("iterative idea development")) {',
+			'  out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validResponse }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  process.exit(0);',
+			'} else if (systemPrompt.includes("combined evaluation") || systemPrompt.includes("evaluation and learning consolidation")) {',
+			'  out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validFeedback }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  process.exit(0);',
+			'} else if (systemPrompt.includes("consolidating") || systemPrompt.includes("Investigation Report")) {',
+			'  out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validReport }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  process.exit(0);',
+			'} else {',
+			'  out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validChecklist }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  process.exit(0);',
+			'}',
+		].join("\n");
+		await fs.writeFile(scriptPath, scriptLines, "utf-8");
+		const invocation = { command: process.execPath, args: [scriptPath] };
+		const start = Date.now();
+		const result = await runIdeaRefinementWorkflow({
+			cwd: dir,
+			idea: "Bootstrap loop escape test",
+			loops: 1,
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+		const elapsed = Date.now() - start;
+		assert.equal(result.manifest.status, "success");
+		assert.ok(elapsed < 15000, `Expected workflow to escape looping bootstrap in seconds (not hang indefinitely), got ${elapsed}ms`);
+		console.log("✓ B21: workflow escapes looping bootstrap after valid payload capture");
+	});
+
 	// B22: Test bootstrap retry logic - first 2 attempts fail marker parsing, 3rd succeeds
 	await withTempDir(async (dir) => {
 		const counterPath = path.join(dir, "attempt-counter.txt");

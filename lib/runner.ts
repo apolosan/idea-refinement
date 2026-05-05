@@ -247,6 +247,22 @@ export interface RunPiStageOptions {
 	onProgress?: (message: string) => void;
 	onEvent?: (event: PiStageStreamEvent) => void;
 	/**
+	 * If provided, every assistant message_end text is normalized and tested.
+	 * When it returns true, the subprocess is terminated early and the stage succeeds
+	 * with the captured text instead of waiting for the child process to exit naturally.
+	 *
+	 * This prevents bootstrap/evaluate stalls when Pi keeps looping after already
+	 * producing a structurally valid final artifact payload.
+	 */
+	earlySuccessValidator?: (normalizedAssistantText: string) => boolean;
+	/**
+	 * Hard cap for non-empty assistant message_end payloads in a single stage.
+	 * Prevents endless alternation such as “Analyzing instructions...” ↔
+	 * “validating output...” when the subprocess loops instead of terminating.
+	 * Default: 8.
+	 */
+	maxAssistantMessages?: number;
+	/**
 	 * Inactivity timeout in ms. Reset whenever the subprocess emits agent/tool progress.
 	 * Default: 5 minutes. Set to 0 to disable.
 	 */
@@ -278,9 +294,11 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 		onProgress,
 		onEvent,
 		runtimeControl,
+		earlySuccessValidator,
 	} = options;
 	// Inactivity timeout only. Reset on meaningful subprocess progress.
 	const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
+	const maxAssistantMessages = options.maxAssistantMessages ?? 8;
 	const usage = zeroUsage();
 	let lastAssistant: AssistantMessageSummary = {};
 	let stderrTail = "";
@@ -323,6 +341,18 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 		runtimeControl?.ensureNotStopped();
 
 		const exitCode = await new Promise<number>((resolve, reject) => {
+			let settled = false;
+			const settleResolve = (code: number) => {
+				if (settled) return;
+				settled = true;
+				resolve(code);
+			};
+			const settleReject = (error: Error) => {
+				if (settled) return;
+				settled = true;
+				reject(error);
+			};
+
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd,
 				shell: false,
@@ -337,9 +367,12 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 
 			let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 			let timeoutError: Error | undefined;
+			let loopingError: Error | undefined;
 			let stopKillTimer: ReturnType<typeof setTimeout> | undefined;
 			let isPaused = false;
 			let procStopped = false;
+			let earlySuccessCaptured = false;
+			let assistantMessageCount = 0;
 
 			const stopProcess = (signal: NodeJS.Signals = "SIGTERM") => {
 				if (procStopped) return;
@@ -365,7 +398,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				timeoutTimer = setTimeout(() => {
 					timeoutError = new Error(`Stage inactive for ${timeoutMs}ms`);
 					stopProcess("SIGTERM");
-					reject(timeoutError);
+					settleReject(timeoutError);
 				}, timeoutMs);
 			};
 
@@ -425,6 +458,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				resetInactivityTimer();
 				const parsed = safeParseJson(line);
 				if (!isPiEvent(parsed)) return;
+				if (earlySuccessCaptured || loopingError) return;
 
 				if (parsed.type === "tool_execution_start") {
 					const toolName = typeof parsed.toolName === "string" ? parsed.toolName : "tool";
@@ -465,7 +499,9 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				if (parsed.type !== "message_end") return;
 
 				const msg = (parsed as Record<string, unknown>).message;
-				if (typeof msg !== "object" || msg === null || typeof (msg as Record<string, unknown>).role !== "string") return;
+				if (typeof msg !== "object" || msg === null) return;
+				const role = typeof (msg as Record<string, unknown>).role === "string" ? (msg as Record<string, unknown>).role : undefined;
+				if (role !== "assistant") return;
 
 				lastAssistant = summarizeAssistantMessage(msg as PiMessage);
 				aggregateUsage(usage, msg as PiMessage);
@@ -476,7 +512,28 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 					stopReason: lastAssistant.stopReason,
 					errorMessage: lastAssistant.errorMessage,
 				});
+
+				const normalizedAssistantText = lastAssistant.text ? normalizeMarkdown(lastAssistant.text) : "";
+				if (normalizedAssistantText) {
+					assistantMessageCount += 1;
+				}
+
 				emitProgress(lastAssistant.text ? "Response received, validating output..." : "Turn completed, waiting for next step...", true);
+
+				if (normalizedAssistantText && earlySuccessValidator?.(normalizedAssistantText)) {
+					earlySuccessCaptured = true;
+					emitProgress("Valid output captured, finalizing stage...", true);
+					stopProcess("SIGTERM");
+					return;
+				}
+
+				if (normalizedAssistantText && assistantMessageCount >= maxAssistantMessages) {
+					loopingError = new Error(
+						`Stage produced ${assistantMessageCount} assistant responses without terminating; possible subprocess loop. Last stopReason: ${lastAssistant.stopReason ?? "unknown"}.`,
+					);
+					stopProcess("SIGTERM");
+					return;
+				}
 			};
 
 			proc.stdout.on("data", (chunk) => {
@@ -496,7 +553,7 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				stderrTail = appendTail(stderrTail, stderrDecoder.write(chunk), STDERR_TAIL_LIMIT);
 			});
 
-			proc.on("error", (error) => { cleanup(); reject(timeoutError ?? error); });
+			proc.on("error", (error) => { cleanup(); settleReject(timeoutError ?? loopingError ?? error); });
 			proc.on("close", (code) => {
 				cleanup();
 				buffer += stdoutDecoder.end();
@@ -507,11 +564,19 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 				}
 				stderrTail = appendTail(stderrTail, stderrDecoder.end(), STDERR_TAIL_LIMIT);
 				if (timeoutError) {
-					reject(timeoutError);
+					settleReject(timeoutError);
+					return;
+				}
+				if (loopingError) {
+					settleReject(loopingError);
+					return;
+				}
+				if (earlySuccessCaptured) {
+					settleResolve(0);
 					return;
 				}
 				// E4 fix: exitCode === null (SIGKILL/OOM) must be treated as failure
-				resolve(code === null ? 1 : code);
+				settleResolve(code === null ? 1 : code);
 			});
 		});
 

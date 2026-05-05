@@ -10,13 +10,18 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.8.1
+## What's New in 1.8.2
 
-This release fixes the leading cause of bootstrap-stage failures and workflow stalls:
+This release fixes the most concerning workflow failure mode reported in real usage: the bootstrap/resume subprocess could keep alternating between `Analyzing instructions...` and `validating output...` indefinitely, even after a valid payload had already been emitted.
 
-- the marker parser (`extractMarkedSections`) now uses **progressive matching** with 4 strategies (strict → same-line → code-fence-stripped → lenient), eliminating failures caused by minor LLM output formatting variations such as markdown code fences, content on the same line as the begin marker, or missing newlines before the end marker;
-- error messages from the parser now **report all missing and insufficient sections at once** and include diagnostic context (marker counts, text snippet), making it much easier to diagnose the root cause when a retry still fails;
-- `writeMarkdownFile` calls in the bootstrap and evaluate retry catch-blocks are now wrapped in their own try/catch, preventing a secondary empty-content write error from masking the original extraction failure and **breaking the retry loop**.
+The fix is structural:
+
+- `runPiStage()` now supports **early success capture**: if a stage-specific validator confirms that the latest assistant payload is already structurally valid, the parent extension terminates the subprocess immediately instead of waiting for it to exit on its own;
+- the bootstrap and merged evaluate+learning stages now reuse their own validators for both normal post-exit validation and early termination decisions;
+- the runner now applies **explicit subprocess-loop protection** by capping assistant `message_end` responses per stage and failing clearly if the child keeps looping instead of terminating;
+- `message_end` handling is now restricted to **assistant-role messages only**, and once a valid payload is captured, later looping messages can no longer overwrite the saved final result.
+
+This makes `/idea-refine` and `/idea-refine-resume` substantially more reliable under pathological subprocess behavior: valid payloads finish quickly, and invalid endless loops fail deterministically instead of appearing frozen.
 
 ## Installation
 
