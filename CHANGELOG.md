@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 - 2026-05-05
+
+### Fixed
+- Excluded `IMPROVEMENTS.md`, `docs/`, test files, and local runtime folders from the published npm package via `.npmignore`.
+
 ## 1.5.0 - 2026-05-05
 
 ### Added

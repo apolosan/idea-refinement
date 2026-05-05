@@ -1,10 +1,7 @@
 tests/
-experiments/
-*.log
-.DS_Store
-.idea/
-.vscode/
-coverage/
-dist/
+.pi/
+.ralph/
+.github/
+IMPROVEMENTS.md
+docs/
 *.tgz
-docs/idea_refinement/
