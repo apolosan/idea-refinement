@@ -2,10 +2,10 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { extractMarkedSections } from "./marker-parser.ts";
 import { generateRandomNumber } from "./number-generator.ts";
-import { writeMarkdownFile } from "./io.ts";
+import { copyTextFileAtomic, writeMarkdownFile } from "./io.ts";
 import { createInitialManifest, createLoopEntry, markStageFailure, markStageRunning, markStageSuccess, saveManifest } from "./manifest.ts";
 import { diffSnapshots, formatSnapshotDiff, takeSnapshot, type SnapshotDiff } from "./post-hoc-check.ts";
-import { ensureLoopDirectory, findNextCallNumber, getCallDirectoryName, getLoopDirectoryName, prepareCallWorkspace, toProjectRelativePath } from "./path-utils.ts";
+import { allocateCallWorkspace, ensureLoopDirectory, getCallDirectoryName, getLoopDirectoryName, prepareCallWorkspace, toProjectRelativePath } from "./path-utils.ts";
 import {
 	buildChecklistUserPrompt,
 	buildDevelopmentUserPrompt,
@@ -87,6 +87,13 @@ class StageValidationError extends Error {
 
 function isSectionExtractionError(error: unknown): error is Error {
 	return error instanceof Error && /Missing marked section|insufficient content/.test(error.message);
+}
+
+function isRetryableEvaluateValidationError(error: unknown): error is Error {
+	if (!(error instanceof Error)) return false;
+	const message = error.message;
+	return /Missing marked section|insufficient content/.test(message)
+		|| /Missing or invalid Overall score in FEEDBACK\.md/.test(message);
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -657,7 +664,11 @@ async function runLoop(options: {
 				onEvent,
 				statusMessage: `Loop ${loopNumber}/${loops}: evaluating + updating learning${attempt > 1 ? ` (attempt ${attempt}/${EVALUATE_MAX_RETRIES})` : ""}`,
 				resultValidator: (result) => {
-					extractMarkedSections(result.text, [...EVALUATE_REQUIRED_FILES]);
+					const sections = extractMarkedSections(result.text, [...EVALUATE_REQUIRED_FILES]);
+					const score = extractOverallScore(sections["FEEDBACK.md"] ?? "");
+					if (typeof score !== "number") {
+						throw new Error("Missing or invalid Overall score in FEEDBACK.md");
+					}
 				},
 				runtimeControl,
 				invocation,
@@ -665,7 +676,7 @@ async function runLoop(options: {
 			evalLearnSections = extractMarkedSections(evaluateLearningResult.text, [...EVALUATE_REQUIRED_FILES]);
 			break;
 		} catch (parseError) {
-			if (!isSectionExtractionError(parseError)) throw parseError;
+			if (!isRetryableEvaluateValidationError(parseError)) throw parseError;
 			lastEvaluateParseError = parseError instanceof Error ? parseError : new Error(String(parseError));
 			const rawPath = path.join(loopDir, `evaluate-raw-attempt-${attempt}.md`);
 			if (parseError instanceof StageValidationError) {
@@ -804,10 +815,7 @@ async function runFinalStages(options: {
 }
 
 async function copyIfExists(sourcePath: string, targetPath: string): Promise<boolean> {
-	if (!(await fileExists(sourcePath))) return false;
-	await fs.mkdir(path.dirname(targetPath), { recursive: true });
-	await fs.copyFile(sourcePath, targetPath);
-	return true;
+	return copyTextFileAtomic(sourcePath, targetPath);
 }
 
 async function seedResumedWorkspace(options: {
@@ -899,8 +907,7 @@ export async function runIdeaRefinementResumeWorkflow(input: WorkflowResumeInput
 	if (finalLoopCount < analysis.lastConsistentLoop) {
 		throw new Error(`Final loop target ${finalLoopCount} is lower than the last consistent loop ${analysis.lastConsistentLoop}.`);
 		}
-	const callNumber = await findNextCallNumber(path.join(cwd, "docs", "idea_refinement"));
-	const workspace = await prepareCallWorkspace(cwd, callNumber);
+	const { callNumber, workspace } = await allocateCallWorkspace(cwd);
 	const relativeCallDir = toProjectRelativePath(cwd, workspace.callDir);
 	const manifest = createInitialManifest({
 		cwd,
@@ -1003,8 +1010,7 @@ export async function runIdeaRefinementResumeWorkflow(input: WorkflowResumeInput
 export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promise<WorkflowRunResult> {
 	const { cwd, idea, loops, modelPattern, thinkingLevel, onStatus, onEvent, runtimeControl, invocation } = input;
 	runtimeControl?.ensureNotStopped();
-	const callNumber = await findNextCallNumber(path.join(cwd, "docs", "idea_refinement"));
-	const workspace = await prepareCallWorkspace(cwd, callNumber);
+	const { callNumber, workspace } = await allocateCallWorkspace(cwd);
 	const relativeCallDir = toProjectRelativePath(cwd, workspace.callDir);
 	const manifest = createInitialManifest({
 		cwd,

@@ -3,14 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import {
+	allocateCallWorkspace,
+	ensureLoopDirectory,
+	findNextCallNumber,
 	formatCallNumber,
 	formatLoopNumber,
 	getCallDirectoryName,
 	getLoopDirectoryName,
-	toProjectRelativePath,
-	findNextCallNumber,
 	prepareCallWorkspace,
-	ensureLoopDirectory,
+	toProjectRelativePath,
 } from "../../lib/path-utils.ts";
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
@@ -79,4 +80,43 @@ export async function run(): Promise<void> {
 		await assert.rejects(fs.access(path.join(loopDir, "logs")));
 	});
 	console.log("✓ ensureLoopDirectory creates loop directory without extra logs subdirectory");
+
+	await withTempDir(async (dir) => {
+		const baseDir = path.join(dir, "docs", "idea_refinement");
+		await fs.mkdir(path.join(baseDir, "artifacts_call_01"), { recursive: true });
+		await fs.mkdir(path.join(baseDir, "artifacts_call_03"), { recursive: true });
+
+		const { callNumber, workspace } = await allocateCallWorkspace(dir);
+		assert.equal(callNumber, 2);
+		assert.equal(path.basename(workspace.callDir), "artifacts_call_02");
+		await fs.access(workspace.logsDir);
+		await fs.access(workspace.loopsDir);
+	});
+	console.log("✓ allocateCallWorkspace fills collisions safely with exclusive directory creation");
+
+	await withTempDir(async (dir) => {
+		const baseDir = path.join(dir, "docs", "idea_refinement");
+		await fs.mkdir(path.join(baseDir, "artifacts_call_01"), { recursive: true });
+
+		const allocations = await Promise.all([
+			allocateCallWorkspace(dir),
+			allocateCallWorkspace(dir),
+			allocateCallWorkspace(dir),
+		]);
+		const callNumbers = allocations.map((entry) => entry.callNumber).sort((a, b) => a - b);
+		assert.deepEqual(callNumbers, [2, 3, 4]);
+		assert.equal(new Set(allocations.map((entry) => entry.workspace.callDir)).size, 3);
+	});
+	console.log("✓ allocateCallWorkspace is collision-safe under concurrent allocation");
+
+	await withTempDir(async (dir) => {
+		const baseDir = path.join(dir, "docs", "idea_refinement");
+		await fs.mkdir(path.join(baseDir, "artifacts_call_01"), { recursive: true });
+		await fs.writeFile(path.join(baseDir, "artifacts_call_01", "orphan.txt"), "partial start", "utf8");
+
+		const { callNumber, workspace } = await allocateCallWorkspace(dir);
+		assert.equal(callNumber, 2);
+		assert.equal(path.basename(workspace.callDir), "artifacts_call_02");
+	});
+	console.log("✓ allocateCallWorkspace skips partially-started call directories safely");
 }

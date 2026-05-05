@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.8.0 - 2026-05-05
+
+### Added
+- Authoritative critical-write denominator constants for workflow-critical root artifacts and per-loop snapshots, making atomic persistence coverage explicit in code and tests.
+- Regression coverage for interrupted writes, collision-safe workspace allocation, partial-start allocation recovery, missing-score retries, malformed-score retry exhaustion, and concurrent new/resume workflow isolation.
+
+### Changed
+- Updated `README.md` to document the 1.8.0 hardening release, including atomic persistence, collision-safe call-directory allocation, retryable score gating, expected runtime patience, and the local Epsilon-greedy reinforcement-learning behavior.
+- Replaced call-workspace allocation in `lib/workflow.ts` with exclusive directory reservation through `lib/path-utils.ts`.
+- Routed resume-time artifact seeding through the hardened atomic text persistence helper instead of direct file copies.
+
+### Fixed
+- Hardened critical workflow persistence in `lib/io.ts` and `lib/manifest.ts` using same-directory temp writes, file flush, and atomic rename semantics.
+- Eliminated `artifacts_call_NN` race conditions during concurrent starts and pre-existing partial-target scenarios.
+- Made `FEEDBACK.md` overall score validation a retryable evaluate-stage gate, with preserved raw-attempt evidence and clean terminal failure after retry exhaustion.
+- Prevented successful loop completion with `loopEntry.score = undefined` when `FEEDBACK.md` lacks a valid `Overall score: NN/100` line.
+
 ## 1.7.0 - 2026-05-05
 
 ### Added

@@ -37,6 +37,8 @@ export interface CallWorkspace {
 	};
 }
 
+export const DEFAULT_CALL_WORKSPACE_ALLOCATION_MAX_ATTEMPTS = 256;
+
 export function formatCallNumber(callNumber: number): string {
 	return String(callNumber).padStart(2, "0");
 }
@@ -83,14 +85,10 @@ export async function findNextCallNumber(baseDir: string): Promise<number> {
 	return highest + 1;
 }
 
-export async function prepareCallWorkspace(cwd: string, callNumber: number): Promise<CallWorkspace> {
-	const baseDir = await ensureIdeaRefinementBase(cwd);
+function buildWorkspace(cwd: string, baseDir: string, callNumber: number): CallWorkspace {
 	const callDir = path.join(baseDir, getCallDirectoryName(callNumber));
 	const logsDir = path.join(callDir, "logs");
 	const loopsDir = path.join(callDir, "loops");
-
-	await fs.mkdir(logsDir, { recursive: true });
-	await fs.mkdir(loopsDir, { recursive: true });
 
 	const rootFiles = {
 		idea: path.join(callDir, ARTIFACT_FILE_NAMES.idea),
@@ -130,6 +128,42 @@ export async function prepareCallWorkspace(cwd: string, callNumber: number): Pro
 		rootFiles,
 		relativePaths,
 	};
+}
+
+async function initializeWorkspaceDirectories(workspace: CallWorkspace): Promise<void> {
+	await fs.mkdir(workspace.logsDir, { recursive: true });
+	await fs.mkdir(workspace.loopsDir, { recursive: true });
+}
+
+export async function allocateCallWorkspace(
+	cwd: string,
+	options: { startCallNumber?: number; maxAttempts?: number } = {},
+): Promise<{ callNumber: number; workspace: CallWorkspace }> {
+	const baseDir = await ensureIdeaRefinementBase(cwd);
+	const startCallNumber = Math.max(1, options.startCallNumber ?? 1);
+	const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_CALL_WORKSPACE_ALLOCATION_MAX_ATTEMPTS);
+
+	for (let offset = 0; offset < maxAttempts; offset += 1) {
+		const callNumber = startCallNumber + offset;
+		const workspace = buildWorkspace(cwd, baseDir, callNumber);
+		try {
+			await fs.mkdir(workspace.callDir);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+			throw error;
+		}
+		await initializeWorkspaceDirectories(workspace);
+		return { callNumber, workspace };
+	}
+
+	throw new Error(`Failed to allocate a unique call workspace after ${maxAttempts} attempts in ${baseDir}`);
+}
+
+export async function prepareCallWorkspace(cwd: string, callNumber: number): Promise<CallWorkspace> {
+	const baseDir = await ensureIdeaRefinementBase(cwd);
+	const workspace = buildWorkspace(cwd, baseDir, callNumber);
+	await initializeWorkspaceDirectories(workspace);
+	return workspace;
 }
 
 export async function ensureLoopDirectory(workspace: CallWorkspace, loopNumber: number): Promise<string> {

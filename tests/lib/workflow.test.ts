@@ -86,6 +86,92 @@ async function createFakePiScript(dir: string): Promise<{ command: string; args:
 	return { command: process.execPath, args: [scriptPath] };
 }
 
+async function createEvaluateScoreScript(
+	dir: string,
+	attemptModes: Array<"valid" | "missing" | "malformed">,
+): Promise<{ command: string; args: string[]; counterPath: string }> {
+	const scriptPath = path.join(dir, "fake-pi-score-gate.mjs");
+	const counterPath = path.join(dir, "score-attempt-counter.txt");
+	await fs.writeFile(counterPath, "0", "utf-8");
+	const dirForScript = dir.replace(/\\/g, "\\\\");
+	const attemptModesJson = JSON.stringify(attemptModes);
+	const scriptLines = [
+		'import { readFileSync, writeFileSync } from "node:fs";',
+		'import { join } from "node:path";',
+		'const args = process.argv.slice(2);',
+		'let sp = "";',
+		'for (let i = 0; i < args.length - 1; i++) {',
+		'  if (args[i] === "--append-system-prompt") { try { sp = readFileSync(args[i+1], "utf-8"); } catch {} break; }',
+		'}',
+		'function tag(n, c) { return "<<<BEGIN FILE: " + n + ">>>\\n" + c + "\\n<<<END FILE: " + n + ">>>"; }',
+		`const attemptModes = ${attemptModesJson};`,
+		'let r;',
+		'if (sp.includes("initial artifacts")) {',
+		'  r = [',
+		'    tag("DIRECTIVE.md", "# Dir\\nSelected Policy: OPTIMIZATION\\n## OPT\\nFocus on measurable improvement.\\n## CREAT\\nExplore novel approaches."),',
+		'    tag("LEARNING.md", "# Learn\\n[HYP] First entry."),',
+		'    tag("CRITERIA.md", "# Crit\\n## V\\nBefore/after with metrics."),',
+		'    tag("DIAGNOSIS.md", "# Diag\\n[FACT] Initial assessment.\\n[INF] Key inference.\\n## Current vs Proposed\\nCurrent: unvalidated. Proposed: structured."),',
+		'    tag("METRICS.md", "# Met\\n## M1\\n- Scale: 1-10\\n- Baseline: 3/10\\n- Target: 7/10"),',
+		'    tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|pend|Validate|\\n|B2|P1|pend|Explore|")',
+		'  ].join("\\n");',
+		'} else if (sp.includes("iterative idea development")) {',
+		'  r = [',
+		'    "# Response", "## Loop framing", "Analyzing focus.", "## Focused loop diagnosis",',
+		'    "[FACT] Evidence: src/index.ts.", "[FACT] More: lib/workflow.ts.", "## Operational questions and applied external research", "What to measure?",',
+		'    "## Minimum alternatives matrix", "|Alt|P|M|B|C|R|", "|---|---|---|---|---|---|", "|A|X|Y|Z|L|N|", "|B|X2|Y2|Z2|M|S|", "|C|X3|Y3|Z3|H|Ma|",',
+		'    "## Current state vs. proposed state", "before: baseline 5/10, after: target 7/10 (40% improvement)",',
+		'    "## Experiment protocol", "Run tests.", "## Iteration decision", "Keep A. Adjust B.",',
+		'    "## Explicit discards of this iteration", "Discard C.", "## Next focuses", "Test later.",',
+		'    "[INFERENCE] Bottleneck identified.", "[RISK] Over-engineering risk."',
+		'  ].join("\\n");',
+		'} else if (sp.includes("combined evaluation") || sp.includes("evaluation and learning consolidation")) {',
+		`  const counterFile = join("${dirForScript}", "score-attempt-counter.txt");`,
+		'  let count = parseInt(readFileSync(counterFile, "utf-8"), 10);',
+		'  count++;',
+		'  writeFileSync(counterFile, String(count), "utf-8");',
+		'  const mode = attemptModes[Math.min(count - 1, attemptModes.length - 1)] ?? "valid";',
+		'  const lines = [',
+		'    "# Feedback", "## Overall verdict", "Solid.", "## Evidence supporting the verdict", "[FACT] Template.",',
+		'    "## Before/after comparability evaluation", "Before: x. After: y.", "## Epistemic audit", "Tags ok.",',
+		'    "## Criterion-by-criterion evaluation", "Pass.", "## Final iteration decision", "Keep.",',
+		'    "## Objective recommendations for the next iteration", "Evidence.", "## Scoreboard",',
+		'    "Process Rigor score: 72/100", "Material Result score: 68/100"',
+		'  ];',
+		'  if (mode === "valid") lines.push("Overall score: 70/100");',
+		'  if (mode === "malformed") lines.push("Overall score: N/A");',
+		'  const fb = lines.join("\\n");',
+		'  r = [',
+		'    tag("FEEDBACK.md", fb),',
+		'    tag("LEARNING.md", "# Learn\\n[HYP] Works.\\n[DECISION] Maintain."),',
+		'    tag("BACKLOG.md", "# BL\\n|ID|P|S|D|\\n|---|---|---|---|\\n|B1|P0|done|X|\\n|B2|P1|pend|Y|\\n|B3|P2|new|Z|")',
+		'  ].join("\\n");',
+		'} else if (sp.includes("consolidating") || sp.includes("Investigation Report")) {',
+		'  r = [',
+		'    "# Investigation Report", "## Executive summary", "Done.", "## Context and investigation object", "Analyzed.",',
+		'    "## Applied methodology", "Iterative.", "## Main findings", "[FACT] Findings.",',
+		'    "## Score evolution", "70/100.", "## Firm decisions and active hypotheses", "[DECISION] OK.",',
+		'    "## Identified risks and mitigations", "[RISK] Complex.", "## Final recommendations", "Proceed.",',
+		'    "## Cross-references", "All."',
+		'  ].join("\\n");',
+		'} else if (sp.includes("action checklist") || sp.includes("Action Checklist")) {',
+		'  r = [',
+		'    "# Action Checklist", "## Immediate actions (P0)", "- Validate [DECISION]",',
+		'    "## Short-term actions (P1)", "- Implement", "## Medium-term actions (P2)", "- Monitor",',
+		'    "## Long-term actions (P3)", "- Scale", "## Dependencies between actions", "P0->P1.",',
+		'    "## Acceptance criteria per action", "Measurable."',
+		'  ].join("\\n");',
+		'} else {',
+		'  r = "DEFAULT len=" + sp.length;',
+		'}',
+		'process.stdout.write(JSON.stringify({type:"session"})+"\\n");',
+		'process.stdout.write(JSON.stringify({type:"message_end",message:{role:"assistant",content:[{type:"text",text:r}],model:"test",usage:{input:100,output:50,cacheRead:0,cacheWrite:0,totalTokens:150,cost:{total:0}},stopReason:"stop"}})+"\\n");',
+		'process.exit(0);',
+	].join("\n");
+	await fs.writeFile(scriptPath, scriptLines, "utf-8");
+	return { command: process.execPath, args: [scriptPath], counterPath };
+}
+
 export async function run(): Promise<void> {
 	await withTempDir(async (dir) => {
 		const events: string[] = [];
@@ -145,6 +231,7 @@ export async function run(): Promise<void> {
 		const loop = result.manifest.loops[0];
 		assert.equal(loop.loopNumber, 1);
 		assert.ok(loop.randomNumber >= 1 && loop.randomNumber <= 100);
+		assert.equal(loop.score, 70);
 		assert.ok(loop.stages.develop.status === "success" || loop.stages.develop.status === "failed");
 		assert.ok(loop.stages.evaluate.status === "success" || loop.stages.evaluate.status === "failed");
 		assert.ok(loop.stages.learning.status === "success" || loop.stages.learning.status === "failed");
@@ -544,5 +631,190 @@ export async function run(): Promise<void> {
 		assert.match(loop.c7Snapshot!.diffSummary, /RESPONSE\.md/);
 
 		console.log("✓ C7: refinement artifact snapshot detects RESPONSE.md changes");
+	});
+
+	// CHK-04/05/06: missing score is retryable, preserves raw attempt, then succeeds.
+	await withTempDir(async (dir) => {
+		const statuses: string[] = [];
+		const invocation = await createEvaluateScoreScript(dir, ["missing", "valid"]);
+
+		const result = await runIdeaRefinementWorkflow({
+			cwd: dir,
+			idea: "Test missing score retry",
+			loops: 1,
+			onStatus: (msg) => { if (msg) statuses.push(msg); },
+			onEvent: () => {},
+			invocation,
+		});
+
+		assert.equal(result.manifest.status, "success");
+		assert.equal(result.manifest.loops[0]?.score, 70);
+		assert.equal(parseInt(await fs.readFile(invocation.counterPath, "utf8"), 10), 2);
+		await fs.access(path.join(result.callDir, "loops", "loop_01", "evaluate-raw-attempt-1.md"));
+		assert.ok(statuses.some((status) => status.includes("Missing or invalid Overall score in FEEDBACK.md")));
+		console.log("✓ CHK-04/05/06: missing score retries, captures raw attempt, then succeeds");
+	});
+
+	// CHK-04/05/06: malformed score is retryable and fails cleanly after retry exhaustion.
+	await withTempDir(async (dir) => {
+		const invocation = await createEvaluateScoreScript(dir, ["malformed", "malformed", "malformed"]);
+		await assert.rejects(
+			async () => {
+				await runIdeaRefinementWorkflow({
+					cwd: dir,
+					idea: "Test malformed score exhaustion",
+					loops: 1,
+					onStatus: () => {},
+					onEvent: () => {},
+					invocation,
+				});
+			},
+			/Failed to extract evaluate\/learning sections after 3 attempts/,
+		);
+
+		const callDir = path.join(dir, "docs", "idea_refinement", "artifacts_call_01");
+		const manifest = JSON.parse(await fs.readFile(path.join(callDir, "run.json"), "utf8"));
+		assert.equal(manifest.status, "failed");
+		assert.equal(parseInt(await fs.readFile(invocation.counterPath, "utf8"), 10), 3);
+		await fs.access(path.join(callDir, "loops", "loop_01", "evaluate-raw-attempt-1.md"));
+		await fs.access(path.join(callDir, "loops", "loop_01", "evaluate-raw-attempt-2.md"));
+		await fs.access(path.join(callDir, "loops", "loop_01", "evaluate-raw-attempt-3.md"));
+		console.log("✓ CHK-04/05/06: malformed score retries and fails after exhaustion with raw-attempt evidence");
+	});
+
+	// CHK-02: new-run entry path remains collision-safe when a target directory already exists before manifest creation.
+	await withTempDir(async (dir) => {
+		await fs.mkdir(path.join(dir, "docs", "idea_refinement", "artifacts_call_01"), { recursive: true });
+		const invocation = await createFakePiScript(dir);
+		const result = await runIdeaRefinementWorkflow({
+			cwd: dir,
+			idea: "Test partial-start allocation for new runs",
+			loops: 1,
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+		assert.equal(path.basename(result.callDir), "artifacts_call_02");
+		console.log("✓ CHK-02: new-run workflow skips pre-existing target directories safely");
+	});
+
+	// CHK-02: resume entry path also skips pre-existing target directories before manifest creation.
+	await withTempDir(async (dir) => {
+		const sourceDir = path.join(dir, "docs", "idea_refinement", "artifacts_call_01");
+		await fs.mkdir(sourceDir, { recursive: true });
+		await fs.writeFile(path.join(sourceDir, "IDEA.md"), "Resume bootstrap failure idea\n", "utf-8");
+		await fs.writeFile(path.join(sourceDir, "run.json"), `${JSON.stringify({
+			schemaVersion: 1,
+			status: "failed",
+			cwd: dir,
+			callNumber: 1,
+			callId: "artifacts_call_01",
+			callDir: "docs/idea_refinement/artifacts_call_01",
+			startedAt: new Date().toISOString(),
+			completedAt: new Date().toISOString(),
+			requestedLoops: 1,
+			completedLoops: 0,
+			files: {
+				idea: "docs/idea_refinement/artifacts_call_01/IDEA.md",
+				directive: "docs/idea_refinement/artifacts_call_01/DIRECTIVE.md",
+				learning: "docs/idea_refinement/artifacts_call_01/LEARNING.md",
+				criteria: "docs/idea_refinement/artifacts_call_01/CRITERIA.md",
+				diagnosis: "docs/idea_refinement/artifacts_call_01/DIAGNOSIS.md",
+				metrics: "docs/idea_refinement/artifacts_call_01/METRICS.md",
+				backlog: "docs/idea_refinement/artifacts_call_01/BACKLOG.md",
+				response: "docs/idea_refinement/artifacts_call_01/RESPONSE.md",
+				feedback: "docs/idea_refinement/artifacts_call_01/FEEDBACK.md",
+				report: "docs/idea_refinement/artifacts_call_01/REPORT.md",
+				checklist: "docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
+			},
+			bootstrap: {
+				name: "bootstrap",
+				status: "failed",
+				logPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.jsonl",
+				stderrPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.stderr.log",
+				errorMessage: "Synthetic bootstrap failure",
+			},
+			report: { name: "report", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/report.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/report.stderr.log" },
+			checklist: { name: "checklist", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.stderr.log" },
+			loops: [],
+			assumptions: [],
+			lastError: "Synthetic bootstrap failure",
+		}, null, 2)}\n`, "utf-8");
+		await fs.mkdir(path.join(dir, "docs", "idea_refinement", "artifacts_call_02"), { recursive: true });
+
+		const invocation = await createFakePiScript(dir);
+		const resumed = await runIdeaRefinementResumeWorkflow({
+			cwd: dir,
+			sourceCallSpecifier: "1",
+			finalLoopCount: 1,
+			workaroundInstructions: "Retry after partial target collision.",
+			onStatus: () => {},
+			onEvent: () => {},
+			invocation,
+		});
+		assert.equal(path.basename(resumed.callDir), "artifacts_call_03");
+		console.log("✓ CHK-02: resume workflow skips pre-existing target directories safely");
+	});
+
+	// CHK-02: concurrent new workflows allocate distinct artifacts_call_NN directories.
+	await withTempDir(async (dir) => {
+		const invocation = await createFakePiScript(dir);
+		const [first, second] = await Promise.all([
+			runIdeaRefinementWorkflow({ cwd: dir, idea: "Concurrent workflow A", loops: 1, onStatus: () => {}, onEvent: () => {}, invocation }),
+			runIdeaRefinementWorkflow({ cwd: dir, idea: "Concurrent workflow B", loops: 1, onStatus: () => {}, onEvent: () => {}, invocation }),
+		]);
+		assert.equal(new Set([first.callDir, second.callDir]).size, 2);
+		console.log("✓ CHK-02: concurrent new workflows stay isolated");
+	});
+
+	// CHK-02: concurrent resume workflows allocate distinct artifacts_call_NN directories.
+	await withTempDir(async (dir) => {
+		const sourceDir = path.join(dir, "docs", "idea_refinement", "artifacts_call_01");
+		await fs.mkdir(sourceDir, { recursive: true });
+		await fs.writeFile(path.join(sourceDir, "IDEA.md"), "Concurrent resume source\n", "utf-8");
+		await fs.writeFile(path.join(sourceDir, "run.json"), `${JSON.stringify({
+			schemaVersion: 1,
+			status: "failed",
+			cwd: dir,
+			callNumber: 1,
+			callId: "artifacts_call_01",
+			callDir: "docs/idea_refinement/artifacts_call_01",
+			startedAt: new Date().toISOString(),
+			completedAt: new Date().toISOString(),
+			requestedLoops: 1,
+			completedLoops: 0,
+			files: {
+				idea: "docs/idea_refinement/artifacts_call_01/IDEA.md",
+				directive: "docs/idea_refinement/artifacts_call_01/DIRECTIVE.md",
+				learning: "docs/idea_refinement/artifacts_call_01/LEARNING.md",
+				criteria: "docs/idea_refinement/artifacts_call_01/CRITERIA.md",
+				diagnosis: "docs/idea_refinement/artifacts_call_01/DIAGNOSIS.md",
+				metrics: "docs/idea_refinement/artifacts_call_01/METRICS.md",
+				backlog: "docs/idea_refinement/artifacts_call_01/BACKLOG.md",
+				response: "docs/idea_refinement/artifacts_call_01/RESPONSE.md",
+				feedback: "docs/idea_refinement/artifacts_call_01/FEEDBACK.md",
+				report: "docs/idea_refinement/artifacts_call_01/REPORT.md",
+				checklist: "docs/idea_refinement/artifacts_call_01/CHECKLIST.md",
+			},
+			bootstrap: {
+				name: "bootstrap",
+				status: "failed",
+				logPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.jsonl",
+				stderrPath: "docs/idea_refinement/artifacts_call_01/logs/bootstrap.stderr.log",
+				errorMessage: "Synthetic bootstrap failure",
+			},
+			report: { name: "report", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/report.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/report.stderr.log" },
+			checklist: { name: "checklist", status: "pending", logPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.jsonl", stderrPath: "docs/idea_refinement/artifacts_call_01/logs/checklist.stderr.log" },
+			loops: [],
+			assumptions: [],
+			lastError: "Synthetic bootstrap failure",
+		}, null, 2)}\n`, "utf-8");
+		const invocation = await createFakePiScript(dir);
+		const [first, second] = await Promise.all([
+			runIdeaRefinementResumeWorkflow({ cwd: dir, sourceCallSpecifier: "1", finalLoopCount: 1, workaroundInstructions: "Resume A", onStatus: () => {}, onEvent: () => {}, invocation }),
+			runIdeaRefinementResumeWorkflow({ cwd: dir, sourceCallSpecifier: "1", finalLoopCount: 1, workaroundInstructions: "Resume B", onStatus: () => {}, onEvent: () => {}, invocation }),
+		]);
+		assert.equal(new Set([first.callDir, second.callDir]).size, 2);
+		console.log("✓ CHK-02: concurrent resume workflows stay isolated");
 	});
 }

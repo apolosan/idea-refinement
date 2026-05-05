@@ -8,16 +8,18 @@ Think of it as **autoresearch** — inspired by the concept Andrej Karpathy popu
 
 While it is designed to refine raw ideas into actionable plans, it works just as powerfully for **intelligent and convincing problem solving**: feed it a bug, an architectural tension, a product decision, or a research question, and the workflow will dissect it, propose alternatives, evaluate them with epistemic rigor, and deliver a prioritized checklist of next steps.
 
-## What's New in 1.7.0
+A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-This release adds an explicit failed-run resume flow without changing the standard workflow:
+## What's New in 1.8.0
 
-- new `/idea-refine-resume` command for resuming from an existing failed `artifacts_call_NN` run;
-- resume source can be provided either as a direct path or as the execution index `NN`;
-- the resume flow analyzes the failed manifest and artifacts to detect the last consistent loop, failure category, missing artifacts, and whether bootstrap can be reused;
-- users can provide workaround instructions and a new final loop target before the resumed execution starts;
-- resumed runs generate `RESUME_CONTEXT.md` and carry forward only the last consistent state instead of trusting partially failed loop artifacts;
-- regression coverage now verifies resume recovery from both bootstrap failures and failed loop stages.
+This release hardens the workflow engine in the areas that most affect auditability, recoverability, and deterministic execution:
+
+- critical workflow artifacts are now persisted through **atomic-by-default writes** (same-directory temp file + flush + rename), reducing partial-write risk for files such as `run.json`, `DIRECTIVE.md`, `LEARNING.md`, `BACKLOG.md`, `REPORT.md`, and `CHECKLIST.md`;
+- `artifacts_call_NN` allocation is now **collision-safe**, using exclusive directory creation with bounded retry instead of a fragile scan-then-create sequence;
+- the evaluate stage now treats a valid `Overall score: NN/100` in `FEEDBACK.md` as a **required success gate** rather than a best-effort parse;
+- missing or malformed overall scores are now handled as **retryable validation failures**, preserving raw attempt captures before the workflow fails definitively after retry exhaustion;
+- resume seeding now routes copied critical artifacts through the same hardened persistence path;
+- regression coverage was expanded to cover interrupted writes, concurrent allocation, partial-start allocation, score-gate retries, and retry exhaustion.
 
 ## Installation
 
@@ -93,6 +95,8 @@ Or, for a short idea:
 ```
 
 After that, the extension will ask for the number of loops.
+
+> **Recommendation:** choose the loop count with realism in mind. More loops usually mean better refinement, but they also mean more processing time. A little patience is part of the design: the workflow compounds insight step by step rather than rushing to a shallow conclusion.
 
 ### Runtime shortcuts
 
@@ -199,6 +203,8 @@ The extension does not rely on the current agent to orchestrate the process.
 It itself:
 
 - generates non-deterministic random numbers via Web Crypto API (CSPRNG with rejection sampling) to guide the workflow;
+- uses an **Epsilon-greedy reinforcement learning strategy** to balance exploitation of what is already working with controlled exploration of alternatives;
+- preserves that reinforcement-learning behavior **on the user's own machine**, so the refinement policy can keep improving locally even when the workflow is executed with third-party models — including heterogeneous setups that mix different model families;
 - spawns its own `pi` subprocesses in sequence;
 - injects stage-specific system prompts;
 - captures the final text of each subprocess;
