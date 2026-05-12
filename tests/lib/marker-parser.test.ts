@@ -71,6 +71,34 @@ This is the directive content with enough characters to pass validation.
 	assert.ok(lenientSections["DIRECTIVE.md"].includes("lenient matching"));
 	console.log("✓ extractMarkedSections handles lenient marker matching");
 
+	// Strategy 5: Path-prefixed labels (basename match)
+	const pathPrefixed = extractMarkedSections(
+		`<<<BEGIN FILE: docs/idea_refinement/artifacts_call_06/FEEDBACK.md>>>
+This is feedback body text with sufficient non-whitespace content.
+<<<END FILE: FEEDBACK.md>>>
+<<<BEGIN FILE: ./nested/LEARNING.md>>>
+Learning section content is long enough to validate here.
+<<<END FILE: docs/x/LEARNING.md>>>
+<<<BEGIN FILE: BACKLOG.md>>>
+Backlog section has enough characters for the parser minimum.
+<<<END FILE: BACKLOG.md>>>`,
+		["FEEDBACK.md", "LEARNING.md", "BACKLOG.md"],
+	);
+	assert.ok(pathPrefixed["FEEDBACK.md"].includes("feedback body"));
+	assert.ok(pathPrefixed["LEARNING.md"].includes("Learning section"));
+	assert.ok(pathPrefixed["BACKLOG.md"].includes("Backlog section"));
+	console.log("✓ extractMarkedSections matches basename when markers include paths");
+
+	// Strategy 5b: Flexible whitespace inside markers
+	const spacedMarkers = extractMarkedSections(
+		`<<< BEGIN FILE : FEEDBACK.md >>>
+Spaced marker feedback content is still long enough.
+<<< END FILE : FEEDBACK.md >>>`,
+		["FEEDBACK.md"],
+	);
+	assert.ok(spacedMarkers["FEEDBACK.md"].includes("Spaced marker"));
+	console.log("✓ extractMarkedSections tolerates extra spaces inside marker tokens");
+
 	// Error message includes diagnostic info
 	try {
 		extractMarkedSections("Some random text without markers", ["DIRECTIVE.md"]);

@@ -2,6 +2,48 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Last path segment, tolerating both `/` and `\\` in LLM output. */
+function markerLabelBasename(label: string): string {
+	const trimmed = label.trim();
+	if (!trimmed) return "";
+	const normalizedSlashes = trimmed.replace(/\\/g, "/");
+	const parts = normalizedSlashes.split("/");
+	return (parts[parts.length - 1] ?? trimmed).trim();
+}
+
+/**
+ * Strategy 5: scan for begin/end pairs where the label is a full path or relative path,
+ * but basename matches the expected artifact name (e.g. `docs/.../FEEDBACK.md` vs `FEEDBACK.md`).
+ * Also tolerates extra spaces inside markers (`<<< BEGIN FILE : name >>>`).
+ */
+function tryExtractSectionByBasename(normalized: string, fileName: string): string | null {
+	const expected = fileName.trim().toLowerCase();
+	if (!expected) return null;
+
+	const beginRe = /<<<\s*BEGIN\s+FILE\s*:\s*(.+?)\s*>>>/g;
+	const endRe = /<<<\s*END\s+FILE\s*:\s*(.+?)\s*>>>/g;
+
+	let beginMatch: RegExpExecArray | null;
+	while ((beginMatch = beginRe.exec(normalized)) !== null) {
+		const innerBegin = beginMatch[1] ?? "";
+		if (markerLabelBasename(innerBegin).toLowerCase() !== expected) continue;
+
+		const contentStart = beginMatch.index + beginMatch[0].length;
+		const tail = normalized.slice(contentStart);
+		endRe.lastIndex = 0;
+
+		let endMatch: RegExpExecArray | null;
+		while ((endMatch = endRe.exec(tail)) !== null) {
+			const innerEnd = endMatch[1] ?? "";
+			if (markerLabelBasename(innerEnd).toLowerCase() === expected) {
+				return tail.slice(0, endMatch.index).trim();
+			}
+		}
+	}
+
+	return null;
+}
+
 /**
  * O3 fix: Validate that each extracted section has minimum content (10 non-whitespace chars).
  * Previously, empty content was silently accepted, which could break the workflow.
@@ -27,6 +69,7 @@ function stripMarkdownCodeFences(text: string): string {
  * Strategy 2: Same markers but allowing content on same line as begin/end
  * Strategy 3: Strip markdown code fences first, then try exact match
  * Strategy 4: Lenient — allow any whitespace between markers and content
+ * Strategy 5: Basename / flexible-marker scan — tolerates path-prefixed labels and extra spaces inside `<<< >>>`
  */
 function tryExtractSection(normalized: string, fileName: string): string | null {
 	const escapedName = escapeRegExp(fileName);
@@ -69,6 +112,14 @@ function tryExtractSection(normalized: string, fileName: string): string | null 
 		),
 	);
 	if (match) return (match[1] ?? "").trim();
+
+	// Strategy 5: path-prefixed or otherwise mismatched labels sharing the correct basename
+	let byBasename = tryExtractSectionByBasename(normalized, fileName);
+	if (byBasename === null) {
+		const stripped = stripMarkdownCodeFences(normalized);
+		if (stripped !== normalized) byBasename = tryExtractSectionByBasename(stripped, fileName);
+	}
+	if (byBasename !== null) return byBasename;
 
 	return null;
 }

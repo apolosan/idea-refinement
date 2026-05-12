@@ -57,6 +57,13 @@ ${TOOL_USE_CONTRACT}
 
 ${EPISTEMIC_CONTRACT}
 
+Machine-parseable marker contract (must hold even if the model is small or imprecise):
+- Use ONLY bare filenames inside markers (e.g. FEEDBACK.md). NEVER put directories or paths inside the marker label.
+- Forbidden label: <<<BEGIN FILE: docs/anything/FEEDBACK.md>>> — use <<<BEGIN FILE: FEEDBACK.md>>> instead.
+- The extension matches by basename, but you must still follow the bare-filename form to avoid ambiguity.
+- Each pair must close with <<<END FILE: <same bare filename>>> on its own logical block.
+- Do not wrap the marker tokens themselves in backticks or HTML; keep <<< and >>> literally ASCII.
+
 Minimum structure:
 - DIRECTIVE.md: context, objectives, selected policy, immutable rules, limits, and anti-pseudo-rigor rules.
 - LEARNING.md: active hypotheses, doubts, risks, provisional decisions, next focus, relevant discards.
@@ -170,6 +177,13 @@ ${TOOL_USE_CONTRACT}
 - This stage normally needs read only.
 
 ${EPISTEMIC_CONTRACT}
+
+Machine-parseable marker contract (must hold even if the model is small or imprecise):
+- Use ONLY bare filenames inside markers (e.g. FEEDBACK.md). NEVER put directories or paths inside the marker label.
+- Forbidden label: <<<BEGIN FILE: docs/anything/FEEDBACK.md>>> — use <<<BEGIN FILE: FEEDBACK.md>>> instead.
+- The extension matches by basename, but you must still follow the bare-filename form to avoid ambiguity.
+- Each pair must close with <<<END FILE: <same bare filename>>> on its own logical block.
+- Do not wrap the marker tokens themselves in backticks or HTML; keep <<< and >>> literally ASCII.
 
 Mandatory output contract:
 <<<BEGIN FILE: FEEDBACK.md>>>

@@ -10,21 +10,21 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.8.3
+## What's New in 1.8.4
 
-This release focuses on the two practical problems seen in real usage:
+This release hardens the **artifact marker bridge** between subprocess models and the extension parser, especially after the merged evaluate+learning stage (`FEEDBACK.md`, `LEARNING.md`, `BACKLOG.md`).
 
-1. some models were wasting a first tool call on malformed `read` / `bash` payloads and only succeeding on the second try;
-2. bootstrap could spend too long in `Drafting response...`, especially while generating six artifacts from an over-instructed prompt.
+What changed:
 
-Applied changes:
+- **Basename-aware marker parsing** in `lib/marker-parser.ts`: if a model emits `<<<BEGIN FILE: docs/idea_refinement/artifacts_call_NN/FEEDBACK.md>>>` instead of the canonical bare `FEEDBACK.md` label, the extension still extracts the section reliably.
+- **More tolerant marker token syntax** (extra spaces inside `<<< … >>>`) plus a fenced-markdown retry for the basename scanner.
+- **Prompt-level contract** in `lib/prompts.ts` that tells every model—small or large—to emit bare filenames inside markers, while the parser remains defensive against common mistakes.
 
-- simplified and tightened all stage prompts in `lib/prompts.ts`, removing excess wording and contradictory guidance;
-- added an explicit tool-call contract with exact payload shapes for `read` and `bash`, plus a one-retry correction rule for malformed tool calls;
-- rolled out `stdin` prompt transport to all workflow stages, reducing raw prompt exposure in subprocess argv and slightly lowering subprocess startup overhead;
-- kept the existing structural safeguards from 1.8.2, including early-success capture and subprocess-loop protection.
+Together with the 1.8.3 prompt lean-down and 1.8.2 runtime guards, this makes loop hand-offs much less sensitive to model quality or formatting quirks.
 
-Net effect: less prompt burden on the model, fewer avoidable first-attempt tool-call errors, and a leaner bootstrap stage without changing the artifact contract or the workflow sequence.
+## Recent: 1.8.3
+
+Release 1.8.3 focused on leaner stage prompts, explicit `read` / `bash` payload shapes with a one-retry rule, and `stdin` prompt transport across all stages. See `CHANGELOG.md` for full history.
 
 ## Installation
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.4 - 2026-05-12
+
+### Added
+- Fifth extraction strategy in `lib/marker-parser.ts`: basename-aware pairing for `<<<BEGIN FILE: …>>>` / `<<<END FILE: …>>>` labels, so artifacts still parse when models emit directory-prefixed paths (for example `docs/idea_refinement/artifacts_call_NN/FEEDBACK.md`) instead of bare `FEEDBACK.md`.
+- Flexible whitespace inside marker tokens (for example `<<< BEGIN FILE : FEEDBACK.md >>>`) and a fenced-markdown retry path for the basename scanner.
+- Regression tests for path-prefixed markers and spaced marker tokens in `tests/lib/marker-parser.test.ts`.
+- Explicit **machine-parseable marker contract** in `lib/prompts.ts` for bootstrap and evaluate+learning stages: bare filenames only, no paths inside marker labels, no wrapping marker tokens in backticks/HTML.
+
+### Changed
+- Evaluate+learning stage prompts now spell out non-negotiable marker rules aimed at small or imprecise models while the parser remains tolerant of common mistakes.
+
+### Fixed
+- False `"Missing marked section(s) for: FEEDBACK.md, LEARNING.md, BACKLOG.md"` failures after loop 1 when the model used full artifact paths inside otherwise well-formed markers (diagnostic showed matching begin/end counts but zero extracted sections).
+
 ## 1.8.3 - 2026-05-05
 
 ### Added
