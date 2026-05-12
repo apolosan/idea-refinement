@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.5 - 2026-05-13
+
+### Added
+- `canonicalizeMarkerDelimiters()` in `lib/marker-parser.ts` to normalize common LLM marker variants (extra spaces around colons, casing drift on `BEGIN`/`END FILE`, and `<<<END OF FILE: …>>>`) into strict `<<<BEGIN FILE:…>>>` / `<<<END FILE:…>>>` before extraction and diagnostics.
+- Regression tests for lowercase/spaced `END` markers and the `END OF FILE` closing synonym in `tests/lib/marker-parser.test.ts`.
+
+### Fixed
+- Misleading bootstrap diagnostics reporting `0 end marker(s)` while the model had actually emitted flexible closers (for example `<<< end file : DIRECTIVE.md >>>`), which did not match the strict `<<<END FILE:` substring used only for counting.
+
 ## 1.8.4 - 2026-05-12
 
 ### Added

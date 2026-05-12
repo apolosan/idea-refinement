@@ -2,6 +2,19 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Collapses common LLM marker variants into the strict `<<<BEGIN FILE:name>>>` / `<<<END FILE:name>>>`
+ * spelling so regex strategies (1–4) and diagnostics that count `<<<END FILE:` are not fooled by
+ * spaces around colons, casing drift, or `END OF FILE` phrasing.
+ */
+function canonicalizeMarkerDelimiters(text: string): string {
+	let s = text;
+	s = s.replace(/<<<\s*BEGIN\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<BEGIN FILE:${String(label).trim()}>>>`);
+	s = s.replace(/<<<\s*END\s+OF\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE:${String(label).trim()}>>>`);
+	s = s.replace(/<<<\s*END\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE:${String(label).trim()}>>>`);
+	return s;
+}
+
 /** Last path segment, tolerating both `/` and `\\` in LLM output. */
 function markerLabelBasename(label: string): string {
 	const trimmed = label.trim();
@@ -143,9 +156,9 @@ function getDiagnosticSnippet(text: string, keyword: string, contextRadius = 200
 }
 
 export function extractMarkedSections(rawText: string, fileNames: string[]): Record<string, string> {
-	const normalized = rawText.replace(/\r\n/g, "\n");
+	const normalized = canonicalizeMarkerDelimiters(rawText.replace(/\r\n/g, "\n"));
 	const sections: Record<string, string> = {};
-	const missing: string[] = []
+	const missing: string[] = [];
 	const insufficient: Array<{ name: string; length: number }> = [];
 
 	for (const fileName of fileNames) {

@@ -99,6 +99,25 @@ Spaced marker feedback content is still long enough.
 	assert.ok(spacedMarkers["FEEDBACK.md"].includes("Spaced marker"));
 	console.log("✓ extractMarkedSections tolerates extra spaces inside marker tokens");
 
+	// Canonicalization: strict BEGIN + spaced / lowercase END still pairs
+	const mixedEndMarkers = extractMarkedSections(
+		`<<<BEGIN FILE: DIRECTIVE.md>>>
+This directive body is long enough for the parser minimum.
+<<< end file : DIRECTIVE.md >>>`,
+		["DIRECTIVE.md"],
+	);
+	assert.ok(mixedEndMarkers["DIRECTIVE.md"].includes("directive body"));
+	console.log("✓ extractMarkedSections canonicalizes lowercase/spaced END markers");
+
+	const endOfFileSynonym = extractMarkedSections(
+		`<<<BEGIN FILE: DIRECTIVE.md>>>
+Synonym end marker test with sufficient content length.
+<<<END OF FILE: DIRECTIVE.md>>>`,
+		["DIRECTIVE.md"],
+	);
+	assert.ok(endOfFileSynonym["DIRECTIVE.md"].includes("Synonym end"));
+	console.log("✓ extractMarkedSections accepts END OF FILE closing synonym");
+
 	// Error message includes diagnostic info
 	try {
 		extractMarkedSections("Some random text without markers", ["DIRECTIVE.md"]);
