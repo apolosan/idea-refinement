@@ -62,7 +62,6 @@ export async function run(): Promise<void> {
 		userPrompt: "End user",
 		model: "github-copilot/gpt-5.4",
 		thinkingLevel: "high",
-		cwd: "/repo",
 	});
 	assert.deepEqual(piArgs.slice(0, 7), ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", piArgs[6]]);
 	assert.ok(piArgs[6].endsWith("artifact-guard.ts") || piArgs[6].includes("artifact-guard"));

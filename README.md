@@ -10,17 +10,19 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.9.0
+## What's New in 1.9.2
 
-Release **1.9.0** is a governance and release-hardening milestone.
+Release **1.9.2** continua o endurecimento de governança e clarifica limites operacionais.
 
 Highlights:
 
-- **Subprocess containment is now materially stricter**: `artifact-guard.ts` restricts reads to the project scope, restricts `ls` / `tree` to relative paths inside the active call workspace, blocks historical edits outside the active run, and records blocked attempts in `logs/guard-denials.jsonl`.
-- **Resume provenance is now explicit instead of mixed**: `run.json` uses schema version 2, separates carried-forward state from current-run execution metadata, records `RESUME_CONTEXT.md`, tracks loop backlog paths, and keeps raw-attempt evidence paths.
-- **Command-layer truthfulness improved**: the extension now forwards the active Pi session thinking level into workflow subprocesses instead of only carrying latent support in lower layers.
-- **Operational guardrails are stronger**: unusually large loop counts require explicit confirmation, very large counts are refused, workspace allocation starts from the next known call-number hint, and CI now enforces `npm ci`, `typecheck`, tests, and `npm pack --dry-run`.
-- **Public docs are now aligned with the implementation**: the exploration/exploitation mechanism is documented as a virtual/simplified in-run strategy, without overstating local persistent reinforcement learning across runs.
+- **Guard do subprocesso mais estrito**: resolução de caminhos relativos ao `cwd`, bloqueio de escapes para fora do projeto em `read`/`ls`/`tree`, e bloqueio explícito de edições em `artifacts_call_01` (histórico imutável).
+- **Manifesto e herança**: `carriedForward` booleano, `seededFromRun` / `seededFromLoop`, e registo do output do validador no `run.json` para auditoria.
+- **Loops e plataforma**: confirmação acima de 20 loops, teto duro 1000; aviso quando pausa por `SIGSTOP`/`SIGCONT` não é fiável (Windows).
+- **Peer range explícito** para `@mariozechner/pi-coding-agent` e CI de testes alinhado (`npm ci` + typecheck + pack dry-run).
+- **ADR** do papel do validador (`docs/adr/0001-response-validator-role.md`).
+
+Release **1.9.0** (governança e hardening de release) permanece descrita em detalhe no `CHANGELOG.md`.
 
 ## Recent: 1.8.7
 
@@ -58,12 +60,21 @@ Then add it to your Pi `settings.json`:
 
 - **Node.js ≥ 22** (uses `--experimental-strip-types`)
 
+## Supported platforms
+
+- **Linux and macOS:** Full support, including pause/resume of the Pi subprocess via `SIGSTOP`/`SIGCONT` when the runtime exposes POSIX job control to Node child processes.
+- **Windows:** POSIX `SIGSTOP`/`SIGCONT` are generally unavailable for Node child processes. Pause/resume shortcuts may not actually suspend the subprocess; prefer letting stages finish or using stop.
+
+## Peer compatibility
+
+This package declares a tested peer range for `@mariozechner/pi-coding-agent` (`>=0.72.0 <1.0.0`). Versions outside that range might work, but they are not part of the compatibility promise.
+
 ## What It Does
 
 With the `/idea-refine` command, the extension:
 
 1. captures your idea;
-2. asks how many development loops to run, applying confirmation for unusually large runs and refusing values above the hard operational ceiling;
+2. asks how many development loops to run, applying confirmation for runs above **20** loops and refusing values above the hard operational ceiling (**1000**);
 3. reuses the current Pi session model and forwards the current thinking level into every workflow subprocess;
 4. generates the initial artifacts:
    - `DIRECTIVE.md`

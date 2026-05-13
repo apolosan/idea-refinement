@@ -38,10 +38,18 @@ function isRootInTerminalState(root: string): boolean {
 	}
 }
 
-function isPathInside(root: string, targetPath: string, cwd: string): boolean {
-	const resolvedRoot = path.resolve(root);
-	const resolvedTarget = path.resolve(cwd, targetPath);
-	return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
+function resolveSubagentPath(cwd: string, targetPath: string): string {
+	return path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(cwd, targetPath);
+}
+
+function isStrictlyInsideDirectory(resolvedParent: string, resolvedCandidate: string): boolean {
+	if (resolvedCandidate === resolvedParent) return true;
+	const prefix = `${resolvedParent}${path.sep}`;
+	return resolvedCandidate.startsWith(prefix);
+}
+
+function isInsideProjectScopedCwd(cwd: string, resolvedPath: string): boolean {
+	return isStrictlyInsideDirectory(path.resolve(cwd), resolvedPath);
 }
 
 function truncate(value: string, maxLength = GUARD_AUDIT_MAX_PREVIEW): string {
@@ -189,7 +197,8 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 					reason: "Read requires a valid path.",
 				});
 			}
-			if (isPathInside(ctx.cwd, targetPath, ctx.cwd)) return;
+			const resolvedTarget = resolveSubagentPath(ctx.cwd, targetPath);
+			if (isInsideProjectScopedCwd(ctx.cwd, resolvedTarget)) return;
 			return blockWithAudit({
 				protectedRoots,
 				cwd: ctx.cwd,
@@ -222,7 +231,18 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 					reason: "Absolute-path ls/tree commands are not allowed for idea-refinement subprocess agents.",
 				});
 			}
-			const allowed = protectedRoots.some((root) => isPathInside(root, parsedCommand.targetPath, ctx.cwd));
+			const resolvedTarget = resolveSubagentPath(ctx.cwd, parsedCommand.targetPath);
+			if (!isInsideProjectScopedCwd(ctx.cwd, resolvedTarget)) {
+				return blockWithAudit({
+					protectedRoots,
+					cwd: ctx.cwd,
+					toolName: event.toolName,
+					input: event.input,
+					targetPath: parsedCommand.targetPath,
+					reason: "Directory inspection paths must stay inside the project cwd (no path escapes).",
+				});
+			}
+			const allowed = protectedRoots.some((root) => isStrictlyInsideDirectory(path.resolve(root), resolvedTarget));
 			if (allowed) return;
 			return blockWithAudit({
 				protectedRoots,
@@ -246,6 +266,7 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 				});
 			}
 
+			const resolvedTarget = resolveSubagentPath(ctx.cwd, targetPath);
 			const containingRoot = findContainingRoot(targetPath, ctx.cwd, protectedRoots);
 			if (!containingRoot) {
 				return blockWithAudit({
@@ -255,6 +276,17 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 					input: event.input,
 					targetPath,
 					reason: "Edit is restricted to active-call artifacts inside the protected workspace.",
+				});
+			}
+
+			if (!isStrictlyInsideDirectory(path.resolve(containingRoot), resolvedTarget)) {
+				return blockWithAudit({
+					protectedRoots,
+					cwd: ctx.cwd,
+					toolName: event.toolName,
+					input: event.input,
+					targetPath,
+					reason: "Edit paths must resolve inside the active protected call workspace (no path escapes).",
 				});
 			}
 

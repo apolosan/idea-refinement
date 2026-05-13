@@ -21,9 +21,16 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Run tests
-        run: node --experimental-strip-types tests/run-tests.ts
+        run: npm run test:ci
+
+      - name: Package sanity check
+        run: npm pack --dry-run

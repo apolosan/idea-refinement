@@ -195,7 +195,13 @@ function buildResumeContextDocument(analysis: ResumeSourceAnalysis, workaroundIn
 export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier: string): Promise<ResumeSourceAnalysis> {
 	const sourceCallDir = resolveSourceCallDir(cwd, sourceCallSpecifier);
 	const sourceManifestPath = path.join(sourceCallDir, "run.json");
-	const manifestRaw = await readManifest(sourceManifestPath);
+	let manifestRaw: WorkflowManifest;
+	try {
+		manifestRaw = await readManifest(sourceManifestPath);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Invalid or unreadable workflow manifest for resume at ${sourceManifestPath}: ${message}`);
+	}
 	if (manifestRaw.status !== "failed") {
 		throw new Error(`Resume requires a failed run. Current status at ${sourceManifestPath}: ${manifestRaw.status}`);
 	}
@@ -235,7 +241,6 @@ export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier
 	const failureCategory = determineResumeFailureCategory(manifestRaw);
 	const failedLoopNumber = extractFailedLoopNumber(manifestRaw);
 	const recommendedStartLoop = lastConsistentLoop + 1;
-	const shouldRunFinalStagesOnly = bootstrapConsistent && lastConsistentLoop >= manifestRaw.requestedLoops;
 	const lastConsistentScore = manifestRaw.loops.find((loop) => loop.loopNumber === lastConsistentLoop)?.score;
 
 	return {
@@ -250,7 +255,6 @@ export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier
 		failedLoopNumber,
 		recommendedStartLoop,
 		canSkipBootstrap: bootstrapConsistent,
-		shouldRunFinalStagesOnly,
 		failureReason: manifestRaw.lastError,
 		missingArtifacts,
 	};

@@ -127,5 +127,6 @@ export async function writeMarkdownFile(filePath: string, content: string): Prom
 }
 
 export async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
+	// JSON artifacts must preserve structural whitespace; do not run markdown-oriented trim/normalization here.
 	await atomicWriteTextFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }

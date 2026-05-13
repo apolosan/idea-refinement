@@ -7,6 +7,7 @@ import {
 	createIdeaRefinementMonitorState,
 	setIdeaRefinementMonitorDetail,
 } from "./lib/ui-monitor.ts";
+import { posixJobControlSupported } from "./lib/platform-support.ts";
 import { WorkflowRuntimeControl } from "./lib/workflow-runtime-control.ts";
 import { analyzeFailedRunForResume, runIdeaRefinementResumeWorkflow, runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
@@ -18,8 +19,8 @@ const HEARTBEAT_MS = 120;
 const STATUS_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const PAUSE_SHORTCUT = "ctrl+alt+p";
 const STOP_SHORTCUT = "ctrl+alt+x";
-const LOOP_COUNT_SOFT_CONFIRM_THRESHOLD = 12;
-const LOOP_COUNT_HARD_LIMIT = 50;
+const LOOP_COUNT_SOFT_CONFIRM_THRESHOLD = 20;
+const LOOP_COUNT_HARD_LIMIT = 1000;
 const FIXED_STAGE_COUNT = 3;
 const STAGES_PER_LOOP = 2;
 const ESTIMATED_MINUTES_PER_LOOP_MIN = 3;
@@ -111,6 +112,10 @@ async function confirmLoopCountIfNeeded(ctx: ExtensionCommandContext, loops: num
 }
 
 async function collectLoopCount(ctx: ExtensionCommandContext, title = "How many development loops do you want to run?", placeholder = "Enter a positive integer"): Promise<number | undefined> {
+	ctx.ui.notify(
+		"Sugestão da extensão: em geral, entre 5 e 20 loops costuma equilibrar profundidade e custo/tempo. Pode indicar outro valor à sua escolha.",
+		"info",
+	);
 	while (true) {
 		const input = await ctx.ui.input(title, placeholder);
 		if (input === undefined) return undefined;
@@ -203,6 +208,12 @@ function handlePauseShortcut(runtimeControl: WorkflowRuntimeControl, runInProgre
 		return;
 	}
 	const result = runtimeControl.togglePause();
+	if (result.paused && !posixJobControlSupported()) {
+		ctx.ui.notify(
+			"Pause requested, but SIGSTOP/SIGCONT are not available on this platform. The subprocess may keep running until the stage completes.",
+			"warning",
+		);
+	}
 	ctx.ui.notify(result.message, result.paused ? "warning" : "info");
 }
 
@@ -354,7 +365,8 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				});
 
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				deps.runResponseValidatorCheck(responsePath).catch((err) => {
+				const manifestPath = path.join(result.callDir, "run.json");
+				deps.runResponseValidatorCheck(responsePath, { manifestPath, cwd: ctx.cwd }).catch((err) => {
 					console.error("[idea-refinement] Validator check failed:", err);
 				});
 
@@ -513,7 +525,8 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				});
 
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				deps.runResponseValidatorCheck(responsePath).catch((err) => {
+				const manifestPath = path.join(result.callDir, "run.json");
+				deps.runResponseValidatorCheck(responsePath, { manifestPath, cwd: ctx.cwd }).catch((err) => {
 					console.error("[idea-refinement] Validator check failed:", err);
 				});
 

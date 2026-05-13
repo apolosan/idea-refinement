@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.9.2 - 2026-05-15
+
+### Added
+- `docs/adr/0001-response-validator-role.md`: decisão explícita de que o `validator-check` é **QA offline com visibilidade** (não gate do workflow).
+- `lib/platform-support.ts` e aviso no `/idea-refine` quando `SIGSTOP`/`SIGCONT` não estão disponíveis (por exemplo Windows).
+- Registo opcional do resultado do validador em `run.json` (`auxiliaryFiles.responseValidatorOutput`, `lastValidatorCheckScore`) via `recordValidatorCheckOnManifest()`.
+- Metadados de herança em `LoopManifestEntry`: `carriedForward`, `seededFromRun`, `seededFromLoop` (além de `carriedForwardFrom`).
+
+### Changed
+- `artifact-guard.ts`: leituras e `ls`/`tree` resolvem caminhos relativos ao `cwd` e exigem ficar **dentro do projeto**; edições em `docs/idea_refinement/artifacts_call_01/**` são bloqueadas; `ls`/`tree` validam o destino resolvido contra o `cwd`.
+- Limites de loops no comando: confirmação acima de **20** loops; recusa acima de **1000** (alinhado à documentação).
+- `peerDependencies` de `@mariozechner/pi-coding-agent` passa a faixa testada `>=0.72.0 <1.0.0`.
+- `lib/validator-check.ts`: escrita atómica do output; pode atualizar o manifesto quando recebe `manifestPath` + `cwd`.
+- `.github/workflows/test.yml`: alinhado ao CI principal (`npm ci`, typecheck, testes, `npm pack --dry-run`).
+- `README.md`: plataformas suportadas, limites de loops e compatibilidade de peer.
+
+### Removed
+- Campo `shouldRunFinalStagesOnly` em `ResumeSourceAnalysis` (calculado mas não utilizado no fluxo).
+- Parâmetro `cwd` não usado em `buildPiArgs()` (`lib/runner.ts`).
+
+### Fixed
+- `analyzeFailedRunForResume()` envolve erros de `readManifest()` com mensagem explícita (manifest inválido vs. crash opaco).
+- `writeJsonFile()` documenta que JSON não deve passar por normalização tipo Markdown (preservação de whitespace estrutural).
+
 ## 1.9.0 - 2026-05-13
 
 ### Added

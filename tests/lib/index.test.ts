@@ -128,7 +128,7 @@ export async function run(): Promise<void> {
 		const pi = createMockPi("medium");
 		createIdeaRefinementExtension(deps)(pi as any);
 		const handler = pi.getCommand("idea-refine");
-		const { ctx, notifications, confirmCalls } = createMockContext({ cwd: dir, inputs: ["13", "3"], confirms: [false] });
+		const { ctx, notifications, confirmCalls } = createMockContext({ cwd: dir, inputs: ["25", "3"], confirms: [false] });
 
 		await handler("Stress test loop count confirmation", ctx);
 
@@ -157,7 +157,6 @@ export async function run(): Promise<void> {
 				failedLoopNumber: 2,
 				recommendedStartLoop: 2,
 				canSkipBootstrap: true,
-				shouldRunFinalStagesOnly: false,
 				failureReason: "Synthetic failure",
 				missingArtifacts: [],
 			}) as any,

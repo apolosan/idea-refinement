@@ -140,6 +140,12 @@ export interface LoopManifestEntry {
 	completedAt?: string;
 	carriedForwardAt?: string;
 	carriedForwardFrom?: LoopCarriedForwardMetadata;
+	/** True when this loop row was imported from a prior failed run instead of freshly executed in this call. */
+	carriedForward: boolean;
+	/** When carried forward, identifies the source run (typically the source manifest `callId`). */
+	seededFromRun?: string;
+	/** When carried forward, identifies the source loop number within the seeded run. */
+	seededFromLoop?: number;
 	score?: number;
 	c7Snapshot?: C7Snapshot;
 	responsePath: string;
@@ -178,7 +184,6 @@ export interface ResumeSourceAnalysis {
 	failedLoopNumber?: number;
 	recommendedStartLoop: number;
 	canSkipBootstrap: boolean;
-	shouldRunFinalStagesOnly: boolean;
 	failureReason?: string;
 	missingArtifacts: string[];
 }
@@ -186,6 +191,8 @@ export interface ResumeSourceAnalysis {
 export interface WorkflowAuxiliaryFiles {
 	guardAuditLog: string;
 	resumeContext?: string;
+	responseValidatorOutput?: string;
+	lastValidatorCheckScore?: number;
 }
 
 export interface WorkflowRawAttemptPaths {

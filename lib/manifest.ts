@@ -124,6 +124,7 @@ export function createLoopEntry(options: {
 		loopNumber,
 		randomNumber,
 		startedAt: new Date().toISOString(),
+		carriedForward: false,
 		responsePath: toProjectRelativePath(cwd, `${loopDir}/RESPONSE.md`),
 		feedbackPath: toProjectRelativePath(cwd, `${loopDir}/FEEDBACK.md`),
 		learningPath: toProjectRelativePath(cwd, `${loopDir}/LEARNING.md`),
@@ -164,6 +165,9 @@ export function createCarriedForwardLoopEntry(options: {
 	const entry = createLoopEntry(rest);
 	entry.startedAt = undefined;
 	entry.completedAt = undefined;
+	entry.carriedForward = true;
+	entry.seededFromRun = source.sourceCallId;
+	entry.seededFromLoop = source.sourceLoopNumber;
 	entry.carriedForwardAt = new Date().toISOString();
 	entry.carriedForwardFrom = source;
 	entry.score = score;
@@ -387,13 +391,24 @@ function normalizeLoopEntry(value: unknown, sourcePath: string, callDir: string)
 	const record = ensureObject(value, "loops[]", sourcePath);
 	const loopNumber = ensureInteger(record.loopNumber, "loops[].loopNumber", sourcePath, 1);
 	const loopDir = `${callDir}/loops/loop_${formatLoopNumber(loopNumber)}`;
+	const carriedForwardFrom = normalizeLoopCarriedForwardMetadata(record.carriedForwardFrom, `loops[${loopNumber}].carriedForwardFrom`, sourcePath);
+	const carriedForward = typeof record.carriedForward === "boolean"
+		? record.carriedForward
+		: carriedForwardFrom !== undefined;
+	const seededFromRun = optionalString(record.seededFromRun) ?? carriedForwardFrom?.sourceCallId;
+	const seededFromLoop = typeof record.seededFromLoop === "number"
+		? ensureInteger(record.seededFromLoop, `loops[${loopNumber}].seededFromLoop`, sourcePath, 1)
+		: carriedForwardFrom?.sourceLoopNumber;
 	return {
 		loopNumber,
 		randomNumber: ensureInteger(record.randomNumber, `loops[${loopNumber}].randomNumber`, sourcePath, 1),
 		startedAt: optionalString(record.startedAt),
 		completedAt: optionalString(record.completedAt),
 		carriedForwardAt: optionalString(record.carriedForwardAt),
-		carriedForwardFrom: normalizeLoopCarriedForwardMetadata(record.carriedForwardFrom, `loops[${loopNumber}].carriedForwardFrom`, sourcePath),
+		carriedForwardFrom,
+		carriedForward,
+		seededFromRun,
+		seededFromLoop,
 		score: typeof record.score === "number" ? record.score : undefined,
 		c7Snapshot: isObject(record.c7Snapshot) ? {
 			hasChanges: record.c7Snapshot.hasChanges === true,
@@ -484,6 +499,8 @@ function normalizeManifest(raw: unknown, sourcePath: string): WorkflowManifest {
 		auxiliaryFiles: {
 			guardAuditLog: optionalString(auxiliaryFilesRecord.guardAuditLog) ?? `${callDir}/logs/guard-denials.jsonl`,
 			resumeContext: fallbackResumeContextPath,
+			responseValidatorOutput: optionalString(auxiliaryFilesRecord.responseValidatorOutput),
+			lastValidatorCheckScore: typeof auxiliaryFilesRecord.lastValidatorCheckScore === "number" ? auxiliaryFilesRecord.lastValidatorCheckScore : undefined,
 		},
 		rawAttemptPaths: normalizeWorkflowRawAttemptPaths(root.rawAttemptPaths, "rawAttemptPaths", sourcePath),
 		bootstrap: normalizeStageRecord(root.bootstrap, "bootstrap", sourcePath, "bootstrap"),
@@ -523,4 +540,15 @@ export async function readManifest(manifestPath: string): Promise<WorkflowManife
 export async function saveManifest(manifestPath: string, manifest: WorkflowManifest): Promise<void> {
 	manifestWriteCount++;
 	await writeJsonFile(manifestPath, manifest);
+}
+
+export async function recordValidatorCheckOnManifest(options: {
+	manifestPath: string;
+	validatorOutputRelativePath: string;
+	score: number;
+}): Promise<void> {
+	const manifest = await readManifest(options.manifestPath);
+	manifest.auxiliaryFiles.responseValidatorOutput = options.validatorOutputRelativePath;
+	manifest.auxiliaryFiles.lastValidatorCheckScore = options.score;
+	await saveManifest(options.manifestPath, manifest);
 }

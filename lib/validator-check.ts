@@ -2,16 +2,23 @@
  * Validator check: executes a final, non-blocking QA pass on the latest root RESPONSE.md
  * and stores the result next to that artifact as validator-check-output.md.
  *
- * This is intentionally asynchronous and does not gate workflow success.
+ * This is intentionally asynchronous and does not gate workflow success (see docs/adr/0001-response-validator-role.md).
  *
  * Delegates to the unified validateResponse with strictness='full'.
+ * When `manifestPath` and `cwd` are provided, the output path and score are also recorded on run.json for auditability.
  */
 
-import { access, readFile, writeFile, mkdir } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
+import { access, readFile, mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { atomicWriteTextFile } from "./io.ts";
+import { recordValidatorCheckOnManifest } from "./manifest.ts";
+import { toProjectRelativePath } from "./path-utils.ts";
 import { validateResponse } from "./response-validator.ts";
 
-export async function runResponseValidatorCheck(responsePath: string): Promise<void> {
+export async function runResponseValidatorCheck(
+	responsePath: string,
+	options: { manifestPath?: string; cwd?: string } = {},
+): Promise<void> {
 	try {
 		await access(responsePath);
 	} catch {
@@ -41,5 +48,15 @@ export async function runResponseValidatorCheck(responsePath: string): Promise<v
 		`*Generated at ${new Date().toISOString()} by validator-check.ts*`,
 	].join("\n");
 
-	await writeFile(outputPath, output, "utf-8");
+	const normalizedOutput = output.endsWith("\n") ? output : `${output}\n`;
+	await atomicWriteTextFile(outputPath, normalizedOutput);
+
+	if (options.manifestPath && options.cwd) {
+		const relativeOutputPath = toProjectRelativePath(options.cwd, outputPath);
+		await recordValidatorCheckOnManifest({
+			manifestPath: options.manifestPath,
+			validatorOutputRelativePath: relativeOutputPath,
+			score,
+		});
+	}
 }

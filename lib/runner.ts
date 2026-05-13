@@ -125,10 +125,9 @@ export function buildPiArgs(options: {
 	userPrompt: string;
 	model?: string;
 	thinkingLevel?: string;
-	cwd?: string;
 	userPromptTransport?: UserPromptTransport;
 }): string[] {
-	const { tempPromptPath, userPrompt, model, thinkingLevel, cwd, userPromptTransport = "argv" } = options;
+	const { tempPromptPath, userPrompt, model, thinkingLevel, userPromptTransport = "argv" } = options;
 	const args = [
 		"--mode",
 		"json",
@@ -330,7 +329,6 @@ export async function runPiStage(options: RunPiStageOptions): Promise<StageExecu
 			userPrompt,
 			model,
 			thinkingLevel,
-			cwd,
 			userPromptTransport,
 		});
 
