@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.7 - 2026-05-14
+
+### Added
+- Sixth extraction strategy in `lib/marker-parser.ts`: sequential `<<<BEGIN FILE:…>>>` spans inferred up to the next begin marker (or EOF), plus a fenced-Markdown retry path, so bootstrap/evaluate payloads still parse when models omit all `<<<END FILE:…>>>` closers (common with truncation or incomplete completions).
+- Regression test for begin-only bootstrap bundles in `tests/lib/marker-parser.test.ts`.
+
+### Changed
+- `extractOverallScore()` in `lib/validation.ts` now tolerates markdown emphasis, light HTML, and simple table/equals variants when locating `Overall score: NN/100`.
+- Evaluate prompts in `lib/prompts.ts` emphasize a plaintext `Overall score: NN/100` line requirement for machine parsing.
+- `tests/lib/workflow.test.ts` bootstrap-loop harness emits a valid `message_end` immediately and tightens SIGTERM cleanup (timing budget relaxed slightly to reduce flake).
+
+### Fixed
+- Bootstrap failures reporting `0 end marker(s)` and `Missing marked section(s) for: DIRECTIVE.md, LEARNING.md, …` despite valid interleaved bodies after each `BEGIN` header.
+
 ## 1.8.5 - 2026-05-13
 
 ### Added

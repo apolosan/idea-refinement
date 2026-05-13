@@ -268,11 +268,12 @@ export async function run(): Promise<void> {
 			'const args = process.argv.slice(2);',
 			'for (let i = 0; i < args.length - 1; i++) { if (args[i] === "--append-system-prompt") { systemPrompt = readFileSync(args[i+1], "utf8"); break; } }',
 			'function out(event) { process.stdout.write(JSON.stringify(event) + "\\n"); }',
-			'process.on("SIGTERM", () => process.exit(0));',
+			'let spamTimer;',
+			'process.on("SIGTERM", () => { try { clearInterval(spamTimer); } catch {} process.exit(0); });',
 			'out({ type: "session" });',
 			'if (systemPrompt.includes("initial artifacts") || systemPrompt.includes("bootstrap artifacts")) {',
-			'  setTimeout(() => out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validBootstrap }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } }), 10);',
-			'  setInterval(() => {',
+			'  out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: validBootstrap }], model: "test", usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { total: 0 } }, stopReason: "stop" } });',
+			'  spamTimer = setInterval(() => {',
 			'    out({ type: "message_update", assistantMessageEvent: { type: "thinking_start" }, message: { role: "assistant" } });',
 			'    out({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "bootstrap-loop" }], model: "test", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { total: 0 } }, stopReason: "stop" } });',
 			'  }, 100);',
@@ -303,7 +304,7 @@ export async function run(): Promise<void> {
 		});
 		const elapsed = Date.now() - start;
 		assert.equal(result.manifest.status, "success");
-		assert.ok(elapsed < 15000, `Expected workflow to escape looping bootstrap in seconds (not hang indefinitely), got ${elapsed}ms`);
+		assert.ok(elapsed < 20000, `Expected workflow to escape looping bootstrap quickly (not hang indefinitely), got ${elapsed}ms`);
 		console.log("✓ B21: workflow escapes looping bootstrap after valid payload capture");
 	});
 

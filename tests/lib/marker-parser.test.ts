@@ -118,6 +118,26 @@ Synonym end marker test with sufficient content length.
 	assert.ok(endOfFileSynonym["DIRECTIVE.md"].includes("Synonym end"));
 	console.log("✓ extractMarkedSections accepts END OF FILE closing synonym");
 
+	// Strategy 6: no END markers — infer bodies between consecutive BEGIN headers
+	const beginOnlyBootstrap = extractMarkedSections(
+		`<<<BEGIN FILE: DIRECTIVE.md>>>
+Directive body with enough non-whitespace characters here.
+<<<BEGIN FILE: LEARNING.md>>>
+Learning body with enough non-whitespace characters here.
+<<<BEGIN FILE: CRITERIA.md>>>
+Criteria body with enough non-whitespace characters here.
+<<<BEGIN FILE: DIAGNOSIS.md>>>
+Diagnosis body with enough non-whitespace characters here.
+<<<BEGIN FILE: METRICS.md>>>
+Metrics body with enough non-whitespace characters here.
+<<<BEGIN FILE: BACKLOG.md>>>
+Backlog body with enough non-whitespace characters here.`,
+		["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"],
+	);
+	assert.ok(beginOnlyBootstrap["DIRECTIVE.md"].includes("Directive body"));
+	assert.ok(beginOnlyBootstrap["BACKLOG.md"].includes("Backlog body"));
+	console.log("✓ extractMarkedSections infers sections when END markers are missing");
+
 	// Error message includes diagnostic info
 	try {
 		extractMarkedSections("Some random text without markers", ["DIRECTIVE.md"]);

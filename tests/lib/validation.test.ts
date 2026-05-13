@@ -30,5 +30,10 @@ export async function run(): Promise<void> {
 	assert.equal(extractOverallScore("Overall score: 0/100"), undefined); // < 1
 	assert.equal(extractOverallScore("Overall score: 101/100"), undefined); // > 100
 	assert.equal(extractOverallScore("Overall score: 050/100"), 50); // leading zeros
+	assert.equal(extractOverallScore("Overall score: **70**/100"), 70);
+	assert.equal(extractOverallScore("**Overall score: 70/100**"), 70);
+	assert.equal(extractOverallScore("| Overall score | 70 / 100 |"), 70);
+	assert.equal(extractOverallScore("<b>Overall score: 70/100</b>"), 70);
+	assert.equal(extractOverallScore("Overall score = 70/100"), 70);
 	console.log("✓ extractOverallScore finds total score correctly");
 }

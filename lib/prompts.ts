@@ -161,6 +161,7 @@ Phase 1 — FEEDBACK.md
   - Process Rigor score: NN/100
   - Material Result score: NN/100
   - Overall score: NN/100
+- The Overall score line must remain machine-parseable: use plain text on its own line (no bold/backticks/HTML wrapping the digits; avoid table-only scoreboards without a plain "Overall score: NN/100" line).
 - NN must be an integer from 1 to 100.
 - Material Result must weigh at least 60% of the final score.
 
@@ -316,6 +317,7 @@ export function buildEvaluateLearningUserPrompt(options: {
 		`- ${rp.learning}`,
 		"Phase 1: Generate FEEDBACK.md with critical evaluation.",
 		"Phase 2: Generate updated LEARNING.md and BACKLOG.md.",
+		"In FEEDBACK.md include a plaintext line exactly matching Overall score: NN/100 (NN integer 1-100); do not wrap the digits in markdown or HTML.",
 		"Return FEEDBACK.md, LEARNING.md, and BACKLOG.md using the required markers.",
 	].join("\n");
 }

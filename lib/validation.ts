@@ -16,10 +16,33 @@ export function determineDirectivePolicy(randomNumber: number): DirectivePolicy 
 	return randomNumber <= 80 ? "OPTIMIZATION" : "CREATIVITY/EXPLORATION";
 }
 
-export function extractOverallScore(feedbackText: string): number | undefined {
-	const match = feedbackText.match(/Overall score:\s*(\d{1,3})\s*\/\s*100/i);
+function parseOverallScoreMatch(match: RegExpMatchArray | null): number | undefined {
 	if (!match) return undefined;
 	const score = Number.parseInt(match[1], 10);
 	if (!Number.isInteger(score) || score < 1 || score > 100) return undefined;
 	return score;
+}
+
+/**
+ * Extracts the machine-readable overall score from FEEDBACK.md.
+ * Tolerates common LLM formatting drift (markdown emphasis, light HTML, markdown tables).
+ */
+export function extractOverallScore(feedbackText: string): number | undefined {
+	const normalized = feedbackText.replace(/\r\n/g, "\n");
+	const htmlStripped = normalized.replace(/<[^>]{0,200}?>/gi, "");
+	const defanged = htmlStripped.replace(/\*+/g, "").replace(/_+/g, "").replace(/`+/g, "");
+
+	const patterns: RegExp[] = [
+		/\bOverall score\s*:\s*(\d{1,3})\s*\/\s*100\b/i,
+		/\|\s*Overall score\s*\|\s*(\d{1,3})\s*\/\s*100\b/i,
+		/\bOverall score\s*=\s*(\d{1,3})\s*\/\s*100\b/i,
+	];
+
+	for (const textCandidate of [defanged, htmlStripped, normalized]) {
+		for (const re of patterns) {
+			const parsed = parseOverallScoreMatch(textCandidate.match(re));
+			if (typeof parsed === "number") return parsed;
+		}
+	}
+	return undefined;
 }

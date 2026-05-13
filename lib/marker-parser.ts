@@ -58,6 +58,37 @@ function tryExtractSectionByBasename(normalized: string, fileName: string): stri
 }
 
 /**
+ * Strategy 6: infer spans between consecutive <<<BEGIN FILE:...>>> headers.
+ * Handles models that omit END markers (token truncation) while still emitting all BEGIN headers.
+ */
+function tryExtractSectionSequentialBegins(normalized: string, fileName: string): string | null {
+	const expected = fileName.trim().toLowerCase();
+	if (!expected) return null;
+
+	const beginRe = /<<<BEGIN FILE:(.+?)>>>/g;
+	const headers: Array<{ rawLabel: string; index: number; headerLen: number }> = [];
+	let m: RegExpExecArray | null;
+	while ((m = beginRe.exec(normalized)) !== null) {
+		headers.push({ rawLabel: (m[1] ?? "").trim(), index: m.index, headerLen: m[0].length });
+	}
+	if (headers.length === 0) return null;
+
+	for (let i = 0; i < headers.length; i++) {
+		const basename = markerLabelBasename(headers[i].rawLabel).toLowerCase();
+		if (basename !== expected) continue;
+
+		const bodyStart = headers[i].index + headers[i].headerLen;
+		const bodyEnd = i + 1 < headers.length ? headers[i + 1].index : normalized.length;
+		let body = normalized.slice(bodyStart, bodyEnd).trim();
+		const esc = escapeRegExp(basename);
+		body = body.replace(new RegExp(`(?:\\n|^)<<<END FILE:${esc}>>>\\s*$`, "i"), "").trimEnd();
+		return body;
+	}
+
+	return null;
+}
+
+/**
  * O3 fix: Validate that each extracted section has minimum content (10 non-whitespace chars).
  * Previously, empty content was silently accepted, which could break the workflow.
  */
@@ -83,6 +114,7 @@ function stripMarkdownCodeFences(text: string): string {
  * Strategy 3: Strip markdown code fences first, then try exact match
  * Strategy 4: Lenient — allow any whitespace between markers and content
  * Strategy 5: Basename / flexible-marker scan — tolerates path-prefixed labels and extra spaces inside `<<< >>>`
+ * Strategy 6: Sequential BEGIN-only spans — tolerates missing END markers (truncation)
  */
 function tryExtractSection(normalized: string, fileName: string): string | null {
 	const escapedName = escapeRegExp(fileName);
@@ -133,6 +165,14 @@ function tryExtractSection(normalized: string, fileName: string): string | null 
 		if (stripped !== normalized) byBasename = tryExtractSectionByBasename(stripped, fileName);
 	}
 	if (byBasename !== null) return byBasename;
+
+	// Strategy 6: sequential BEGIN headers only (truncation / missing END markers)
+	let sequential = tryExtractSectionSequentialBegins(normalized, fileName);
+	if (sequential === null) {
+		const strippedSeq = stripMarkdownCodeFences(normalized);
+		if (strippedSeq !== normalized) sequential = tryExtractSectionSequentialBegins(strippedSeq, fileName);
+	}
+	if (sequential !== null) return sequential;
 
 	return null;
 }
