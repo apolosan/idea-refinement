@@ -12,6 +12,7 @@ import { run as runRunnerTests } from "./lib/runner.test.ts";
 import { run as runNumberGeneratorTests } from "./lib/number-generator.test.ts";
 import { run as runPromptsTests } from "./lib/prompts.test.ts";
 import { run as runArtifactGuardTests } from "./lib/artifact-guard.test.ts";
+import { run as runIndexTests } from "./lib/index.test.ts";
 import { run as runArtifactGuardCorruptedTests } from "./lib/artifact-guard-corrupted.test.ts";
 import { run as runTerminalStateCacheTests } from "./lib/terminal-state-cache.test.ts";
 import { run as runValidatorCheckConcurrencyTests } from "./lib/validator-check-concurrency.test.ts";
@@ -35,6 +36,7 @@ async function run(): Promise<void> {
 		{ name: "number-generator", run: runNumberGeneratorTests },
 		{ name: "prompts", run: runPromptsTests },
 		{ name: "artifact-guard", run: runArtifactGuardTests },
+		{ name: "index", run: runIndexTests },
 		{ name: "artifact-guard-corrupted", run: runArtifactGuardCorruptedTests },
 		{ name: "terminal-state-cache", run: runTerminalStateCacheTests },
 		{ name: "validator-check-concurrency", run: runValidatorCheckConcurrencyTests },

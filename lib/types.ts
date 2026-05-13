@@ -1,6 +1,7 @@
 export const IDEA_REFINEMENT_DIR_NAME = "idea_refinement";
 export const CALL_DIR_PREFIX = "artifacts_call_";
 export const LOOP_DIR_PREFIX = "loop_";
+export const CURRENT_WORKFLOW_MANIFEST_SCHEMA_VERSION = 2;
 
 export const ARTIFACT_FILE_NAMES = {
 	idea: "IDEA.md",
@@ -19,7 +20,7 @@ export const ARTIFACT_FILE_NAMES = {
 
 export type StageName = "bootstrap" | "develop" | "evaluate" | "learning" | "report" | "checklist";
 export type WorkflowStatus = "running" | "success" | "failed";
-export type StageStatus = "pending" | "running" | "success" | "failed";
+export type StageStatus = "pending" | "running" | "success" | "failed" | "carried_forward";
 export type DirectivePolicy = "OPTIMIZATION" | "CREATIVITY/EXPLORATION";
 export type ResumeFailureCategory = "bootstrap_failed" | "loop_develop_failed" | "loop_evaluate_failed" | "report_failed" | "checklist_failed" | "unknown_failed";
 
@@ -84,6 +85,21 @@ export interface WorkflowProgressEvent {
 	isError?: boolean;
 }
 
+export interface CarriedForwardStageMetadata {
+	sourceCallDir: string;
+	sourceCallId: string;
+	sourceLoopNumber?: number;
+	sourceStageName: StageName;
+	sourceStatus: StageStatus;
+	sourceLogPath?: string;
+	sourceStderrPath?: string;
+	sourceStartedAt?: string;
+	sourceCompletedAt?: string;
+	sourceModel?: string;
+	sourceStopReason?: string;
+	sourceErrorMessage?: string;
+}
+
 export interface StageRecord {
 	name: StageName;
 	status: StageStatus;
@@ -96,6 +112,7 @@ export interface StageRecord {
 	stopReason?: string;
 	errorMessage?: string;
 	usage?: StageUsage;
+	carriedForwardFrom?: CarriedForwardStageMetadata;
 }
 
 export interface C7Snapshot {
@@ -104,16 +121,32 @@ export interface C7Snapshot {
 	changedFiles: number;
 }
 
+export interface LoopRawAttemptPaths {
+	develop: string[];
+	evaluate: string[];
+	learning: string[];
+}
+
+export interface LoopCarriedForwardMetadata {
+	sourceCallDir: string;
+	sourceCallId: string;
+	sourceLoopNumber: number;
+}
+
 export interface LoopManifestEntry {
 	loopNumber: number;
 	randomNumber: number;
-	startedAt: string;
+	startedAt?: string;
 	completedAt?: string;
+	carriedForwardAt?: string;
+	carriedForwardFrom?: LoopCarriedForwardMetadata;
 	score?: number;
 	c7Snapshot?: C7Snapshot;
 	responsePath: string;
 	feedbackPath: string;
 	learningPath: string;
+	backlogPath: string;
+	rawAttemptPaths: LoopRawAttemptPaths;
 	stages: {
 		develop: StageRecord;
 		evaluate: StageRecord;
@@ -129,6 +162,8 @@ export interface ResumeMetadata {
 	lastConsistentLoop: number;
 	resumeFailureCategory: ResumeFailureCategory;
 	workaroundInstructions: string;
+	resumeContextPath: string;
+	carriedForwardLoopNumbers: number[];
 }
 
 export interface ResumeSourceAnalysis {
@@ -146,6 +181,17 @@ export interface ResumeSourceAnalysis {
 	shouldRunFinalStagesOnly: boolean;
 	failureReason?: string;
 	missingArtifacts: string[];
+}
+
+export interface WorkflowAuxiliaryFiles {
+	guardAuditLog: string;
+	resumeContext?: string;
+}
+
+export interface WorkflowRawAttemptPaths {
+	bootstrap: string[];
+	report: string[];
+	checklist: string[];
 }
 
 export interface WorkflowManifest {
@@ -177,6 +223,8 @@ export interface WorkflowManifest {
 		report: string;
 		checklist: string;
 	};
+	auxiliaryFiles: WorkflowAuxiliaryFiles;
+	rawAttemptPaths: WorkflowRawAttemptPaths;
 	bootstrap: StageRecord;
 	report: StageRecord;
 	checklist: StageRecord;

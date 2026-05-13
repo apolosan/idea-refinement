@@ -135,14 +135,7 @@ async function initializeWorkspaceDirectories(workspace: CallWorkspace): Promise
 	await fs.mkdir(workspace.loopsDir, { recursive: true });
 }
 
-export async function allocateCallWorkspace(
-	cwd: string,
-	options: { startCallNumber?: number; maxAttempts?: number } = {},
-): Promise<{ callNumber: number; workspace: CallWorkspace }> {
-	const baseDir = await ensureIdeaRefinementBase(cwd);
-	const startCallNumber = Math.max(1, options.startCallNumber ?? 1);
-	const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_CALL_WORKSPACE_ALLOCATION_MAX_ATTEMPTS);
-
+async function tryAllocateWorkspaceRange(cwd: string, baseDir: string, startCallNumber: number, maxAttempts: number): Promise<{ callNumber: number; workspace: CallWorkspace } | undefined> {
 	for (let offset = 0; offset < maxAttempts; offset += 1) {
 		const callNumber = startCallNumber + offset;
 		const workspace = buildWorkspace(cwd, baseDir, callNumber);
@@ -155,8 +148,27 @@ export async function allocateCallWorkspace(
 		await initializeWorkspaceDirectories(workspace);
 		return { callNumber, workspace };
 	}
+	return undefined;
+}
 
-	throw new Error(`Failed to allocate a unique call workspace after ${maxAttempts} attempts in ${baseDir}`);
+export async function allocateCallWorkspace(
+	cwd: string,
+	options: { startCallNumber?: number; maxAttempts?: number } = {},
+): Promise<{ callNumber: number; workspace: CallWorkspace }> {
+	const baseDir = await ensureIdeaRefinementBase(cwd);
+	const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_CALL_WORKSPACE_ALLOCATION_MAX_ATTEMPTS);
+	const hintedStartCallNumber = Math.max(1, options.startCallNumber ?? await findNextCallNumber(baseDir));
+
+	const hintedAllocation = await tryAllocateWorkspaceRange(cwd, baseDir, hintedStartCallNumber, maxAttempts);
+	if (hintedAllocation) return hintedAllocation;
+
+	if (options.startCallNumber === undefined && hintedStartCallNumber > 1) {
+		const gapFallbackAttempts = hintedStartCallNumber - 1;
+		const gapFallbackAllocation = await tryAllocateWorkspaceRange(cwd, baseDir, 1, gapFallbackAttempts);
+		if (gapFallbackAllocation) return gapFallbackAllocation;
+	}
+
+	throw new Error(`Failed to allocate a unique call workspace after ${maxAttempts} attempts from hint ${hintedStartCallNumber} in ${baseDir}`);
 }
 
 export async function prepareCallWorkspace(cwd: string, callNumber: number): Promise<CallWorkspace> {

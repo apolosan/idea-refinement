@@ -87,12 +87,25 @@ export async function run(): Promise<void> {
 		await fs.mkdir(path.join(baseDir, "artifacts_call_03"), { recursive: true });
 
 		const { callNumber, workspace } = await allocateCallWorkspace(dir);
+		assert.equal(callNumber, 4);
+		assert.equal(path.basename(workspace.callDir), "artifacts_call_04");
+		await fs.access(workspace.logsDir);
+		await fs.access(workspace.loopsDir);
+	});
+	console.log("✓ allocateCallWorkspace uses next known call number as the default hint");
+
+	await withTempDir(async (dir) => {
+		const baseDir = path.join(dir, "docs", "idea_refinement");
+		await fs.mkdir(path.join(baseDir, "artifacts_call_01"), { recursive: true });
+		await fs.mkdir(path.join(baseDir, "artifacts_call_04"), { recursive: true });
+
+		const { callNumber, workspace } = await allocateCallWorkspace(dir, { startCallNumber: 2 });
 		assert.equal(callNumber, 2);
 		assert.equal(path.basename(workspace.callDir), "artifacts_call_02");
 		await fs.access(workspace.logsDir);
 		await fs.access(workspace.loopsDir);
 	});
-	console.log("✓ allocateCallWorkspace fills collisions safely with exclusive directory creation");
+	console.log("✓ allocateCallWorkspace preserves explicit fallback scans for numeric gaps");
 
 	await withTempDir(async (dir) => {
 		const baseDir = path.join(dir, "docs", "idea_refinement");
@@ -118,5 +131,5 @@ export async function run(): Promise<void> {
 		assert.equal(callNumber, 2);
 		assert.equal(path.basename(workspace.callDir), "artifacts_call_02");
 	});
-	console.log("✓ allocateCallWorkspace skips partially-started call directories safely");
+	console.log("✓ allocateCallWorkspace still falls back safely when the next hint is unavailable");
 }

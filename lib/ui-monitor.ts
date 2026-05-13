@@ -112,6 +112,8 @@ function stageStatusIcon(status: StageStatus | undefined, unicode: boolean): str
 				return "✓";
 			case "failed":
 				return "✗";
+			case "carried_forward":
+				return "↷";
 			case "pending":
 			default:
 				return "○";
@@ -124,6 +126,8 @@ function stageStatusIcon(status: StageStatus | undefined, unicode: boolean): str
 			return "+";
 		case "failed":
 			return "x";
+		case "carried_forward":
+			return ">";
 		case "pending":
 		default:
 			return "-";

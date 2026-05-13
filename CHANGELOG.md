@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.0 - 2026-05-13
+
+### Added
+- Command-level loop-count guardrails in `index.ts`: explicit confirmation for unusually large runs, a hard upper limit, and runtime/cost estimates before execution starts.
+- CI pipeline at `.github/workflows/ci.yml` running `npm ci`, `npm run typecheck`, `npm run test:ci`, and `npm pack --dry-run`.
+- Entry-point coverage in `tests/lib/index.test.ts` for thinking-level propagation and loop-count guardrails.
+
+### Changed
+- `artifact-guard.ts` now restricts reads to the project scope, restricts `ls`/`tree` to relative paths inside the active call workspace, blocks historical edits outside the active run, and persists denial audit records.
+- Resume manifests now separate carried-forward provenance from current-run execution metadata via explicit `carried_forward` stage states and provenance fields in `run.json`.
+- Workspace allocation in `lib/path-utils.ts` now uses the next known call number as the default hint while keeping safe fallback scanning.
+- Public docs now describe the exploration/exploitation mechanism as a virtual/simplified in-run strategy rather than local persistent reinforcement learning.
+
+### Fixed
+- Command-layer thinking-level propagation from the active Pi session into workflow subprocess invocations.
+- Manifest governance gaps around resume context paths, loop backlog registration, raw-attempt tracking, and schema-versioned manifest reads.
+
 ## 1.8.7 - 2026-05-14
 
 ### Added
@@ -90,7 +107,7 @@
 - Regression coverage for interrupted writes, collision-safe workspace allocation, partial-start allocation recovery, missing-score retries, malformed-score retry exhaustion, and concurrent new/resume workflow isolation.
 
 ### Changed
-- Updated `README.md` to document the 1.8.0 hardening release, including atomic persistence, collision-safe call-directory allocation, retryable score gating, expected runtime patience, and the local Epsilon-greedy reinforcement-learning behavior.
+- Updated `README.md` to document the 1.8.0 hardening release, including atomic persistence, collision-safe call-directory allocation, retryable score gating, expected runtime patience, and the virtual/simplified Epsilon-greedy exploration/exploitation behavior used inside a run.
 - Replaced call-workspace allocation in `lib/workflow.ts` with exclusive directory reservation through `lib/path-utils.ts`.
 - Routed resume-time artifact seeding through the hardened atomic text persistence helper instead of direct file copies.
 

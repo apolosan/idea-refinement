@@ -2,9 +2,12 @@
 // Kept manually; update when the peer dependency evolves.
 
 declare module "@mariozechner/pi-coding-agent" {
+	export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
 	export interface ExtensionUIContext {
 		editor(title: string, defaultValue: string): Promise<string | undefined>;
 		input(title: string, defaultValue?: string): Promise<string | undefined>;
+		confirm?(title: string, message: string): Promise<boolean>;
 		notify(message: string, level: "info" | "warning" | "error"): void;
 		setStatus(key: string, value: string | undefined): void;
 		setWorkingMessage?(message: string | undefined): void;
@@ -46,6 +49,7 @@ declare module "@mariozechner/pi-coding-agent" {
 			},
 		): void;
 		setActiveTools(toolNames: string[]): void;
+		getThinkingLevel?(): ThinkingLevel;
 		on<T extends string, E = unknown>(
 			event: T,
 			listener: (

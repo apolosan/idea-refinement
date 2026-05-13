@@ -10,21 +10,21 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.8.4
+## What's New in 1.9.0
 
-This release hardens the **artifact marker bridge** between subprocess models and the extension parser, especially after the merged evaluate+learning stage (`FEEDBACK.md`, `LEARNING.md`, `BACKLOG.md`).
+Release **1.9.0** is a governance and release-hardening milestone.
 
-What changed:
+Highlights:
 
-- **Basename-aware marker parsing** in `lib/marker-parser.ts`: if a model emits `<<<BEGIN FILE: docs/idea_refinement/artifacts_call_NN/FEEDBACK.md>>>` instead of the canonical bare `FEEDBACK.md` label, the extension still extracts the section reliably.
-- **More tolerant marker token syntax** (extra spaces inside `<<< … >>>`) plus a fenced-markdown retry for the basename scanner.
-- **Prompt-level contract** in `lib/prompts.ts` that tells every model—small or large—to emit bare filenames inside markers, while the parser remains defensive against common mistakes.
+- **Subprocess containment is now materially stricter**: `artifact-guard.ts` restricts reads to the project scope, restricts `ls` / `tree` to relative paths inside the active call workspace, blocks historical edits outside the active run, and records blocked attempts in `logs/guard-denials.jsonl`.
+- **Resume provenance is now explicit instead of mixed**: `run.json` uses schema version 2, separates carried-forward state from current-run execution metadata, records `RESUME_CONTEXT.md`, tracks loop backlog paths, and keeps raw-attempt evidence paths.
+- **Command-layer truthfulness improved**: the extension now forwards the active Pi session thinking level into workflow subprocesses instead of only carrying latent support in lower layers.
+- **Operational guardrails are stronger**: unusually large loop counts require explicit confirmation, very large counts are refused, workspace allocation starts from the next known call-number hint, and CI now enforces `npm ci`, `typecheck`, tests, and `npm pack --dry-run`.
+- **Public docs are now aligned with the implementation**: the exploration/exploitation mechanism is documented as a virtual/simplified in-run strategy, without overstating local persistent reinforcement learning across runs.
 
-Together with the 1.8.3 prompt lean-down and 1.8.2 runtime guards, this makes loop hand-offs much less sensitive to model quality or formatting quirks.
+## Recent: 1.8.7
 
-## Recent: 1.8.3
-
-Release 1.8.3 focused on leaner stage prompts, explicit `read` / `bash` payload shapes with a one-retry rule, and `stdin` prompt transport across all stages. See `CHANGELOG.md` for full history.
+Release 1.8.7 focused on bootstrap/evaluate extraction resilience when models emit incomplete marker closures. See `CHANGELOG.md` for full history.
 
 ## Installation
 
@@ -63,20 +63,21 @@ Then add it to your Pi `settings.json`:
 With the `/idea-refine` command, the extension:
 
 1. captures your idea;
-2. asks how many development loops to run;
-3. generates the initial artifacts:
+2. asks how many development loops to run, applying confirmation for unusually large runs and refusing values above the hard operational ceiling;
+3. reuses the current Pi session model and forwards the current thinking level into every workflow subprocess;
+4. generates the initial artifacts:
    - `DIRECTIVE.md`
    - `LEARNING.md`
    - `CRITERIA.md`
    - `DIAGNOSIS.md`
    - `METRICS.md`
    - `BACKLOG.md`
-4. executes, for each loop:
+5. executes, for each loop:
    - idea development → `RESPONSE.md`
    - combined critical evaluation + learning update → `FEEDBACK.md`, `LEARNING.md`, `BACKLOG.md`
-5. after all loops, consolidates → `REPORT.md` and `CHECKLIST.md`
-6. stores everything in an isolated directory per invocation;
-7. displays real-time workflow progress through multiple persistent UI channels:
+6. after all loops, consolidates → `REPORT.md` and `CHECKLIST.md`
+7. stores everything in an isolated directory per invocation;
+8. displays real-time workflow progress through multiple persistent UI channels:
    - console/chat notifications for start, stage transitions, loop completion, pause/resume, stop, and failures;
    - current loop and total loops;
    - textual loop progress bar;
@@ -101,7 +102,7 @@ Or, for a short idea:
 
 After that, the extension will ask for the number of loops.
 
-> **Recommendation:** choose the loop count with realism in mind. More loops usually mean better refinement, but they also mean more processing time. A little patience is part of the design: the workflow compounds insight step by step rather than rushing to a shallow conclusion.
+> **Recommendation:** choose the loop count with realism in mind. More loops usually mean better refinement, but they also mean more processing time. The extension now asks for explicit confirmation on unusually large loop counts and refuses values above the hard safety limit.
 
 ### Runtime shortcuts
 
@@ -185,12 +186,14 @@ docs/idea_refinement/artifacts_call_NN/
 ├── CHECKLIST.md         # actionable checklist
 ├── validator-check-output.md  # epistemic validation result
 ├── run.json             # structured execution manifest
+├── RESUME_CONTEXT.md    # present on resumed runs
 ├── logs/
 │   ├── bootstrap.jsonl
 │   ├── loop_01_develop.jsonl
 │   ├── loop_01_evaluate.jsonl
 │   ├── report.jsonl
-│   └── checklist.jsonl
+│   ├── checklist.jsonl
+│   └── guard-denials.jsonl
 └── loops/
     ├── loop_01/
     │   ├── RESPONSE.md
@@ -208,7 +211,8 @@ The extension does not rely on the current agent to orchestrate the process.
 It itself:
 
 - generates non-deterministic random numbers via Web Crypto API (CSPRNG with rejection sampling) to guide the workflow;
-- uses an **Epsilon-greedy exploration/exploitation strategy** to balance what is already working with controlled exploration of alternatives inside the workflow;
+- uses a **virtual/simplified Epsilon-greedy exploration/exploitation strategy** (roughly 80/20 optimization vs. exploration) inside a run, using score feedback as a reward signal without claiming persisted local reinforcement-learning state across runs;
+- reuses the active Pi model and forwards the current session thinking level into each subprocess invocation;
 - spawns its own `pi` subprocesses in sequence;
 - injects stage-specific system prompts;
 - captures the final text of each subprocess;
@@ -231,7 +235,7 @@ To reduce raw prompt exposure in subprocess argv, the extension sends workflow u
 
 ### `PI_IDEA_REFINEMENT_PROTECTED_ROOTS`
 
-This environment variable is used internally by the extension to protect artifact directories from writes during workflow execution. The `artifact-guard.ts` blocks `write` and `edit` operations on protected paths until the workflow reaches a terminal state (`success` or `failed`). It also constrains subprocess agents to a restricted tool set.
+This environment variable is used internally by the extension to protect artifact directories during workflow execution. The `artifact-guard.ts` constrains subprocess agents to `read`, `bash`, and `edit`, blocks out-of-project reads, blocks absolute-path or out-of-scope `ls`/`tree`, blocks historical edits outside the active call, and persists denial audit records in `logs/guard-denials.jsonl`.
 
 **No manual configuration is required** — the extension sets it automatically when starting each subprocess.
 
@@ -239,7 +243,7 @@ This environment variable is used internally by the extension to protect artifac
 
 - `DIRECTIVE.md` is created once and never overwritten.
 - `DIAGNOSIS.md`, `METRICS.md`, and `BACKLOG.md` make refinement more observable, comparable, and auditable.
-- Each stage subprocess receives an auxiliary extension (`artifact-guard.ts`) that blocks direct `write`, restricts `bash` to `ls`/`tree`, and only allows `edit` within `docs/idea_refinement/`.
+- Each stage subprocess receives an auxiliary extension (`artifact-guard.ts`) that blocks direct `write`, restricts directory inspection to `ls`/`tree` inside the active call workspace, blocks historical artifact edits, and records blocked attempts in `logs/guard-denials.jsonl`.
 - Final artifact content is persisted only by the main extension.
 - Each loop keeps its own snapshots in `loops/loop_NN/`.
 
@@ -259,10 +263,13 @@ This environment variable is used internally by the extension to protect artifac
 
 ## Tests
 
-Run local tests with Node 22+:
+Run local checks with Node 22+:
 
 ```bash
+npm run typecheck
 npm test
+npm run test:ci
+npm run release:check
 ```
 
 Tests cover:

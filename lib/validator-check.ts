@@ -1,8 +1,8 @@
 /**
- * Validator check: executes validation on RESPONSE.md
- * and records results in experiments/results/ without blocking the workflow.
+ * Validator check: executes a final, non-blocking QA pass on the latest root RESPONSE.md
+ * and stores the result next to that artifact as validator-check-output.md.
  *
- * Called asynchronously and non-critically after each loop.
+ * This is intentionally asynchronous and does not gate workflow success.
  *
  * Delegates to the unified validateResponse with strictness='full'.
  */

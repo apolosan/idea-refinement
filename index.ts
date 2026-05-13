@@ -18,6 +18,26 @@ const HEARTBEAT_MS = 120;
 const STATUS_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const PAUSE_SHORTCUT = "ctrl+alt+p";
 const STOP_SHORTCUT = "ctrl+alt+x";
+const LOOP_COUNT_SOFT_CONFIRM_THRESHOLD = 12;
+const LOOP_COUNT_HARD_LIMIT = 50;
+const FIXED_STAGE_COUNT = 3;
+const STAGES_PER_LOOP = 2;
+const ESTIMATED_MINUTES_PER_LOOP_MIN = 3;
+const ESTIMATED_MINUTES_PER_LOOP_MAX = 6;
+
+export interface IdeaRefinementExtensionDeps {
+	analyzeFailedRunForResume: typeof analyzeFailedRunForResume;
+	runIdeaRefinementResumeWorkflow: typeof runIdeaRefinementResumeWorkflow;
+	runIdeaRefinementWorkflow: typeof runIdeaRefinementWorkflow;
+	runResponseValidatorCheck: typeof runResponseValidatorCheck;
+}
+
+const defaultIdeaRefinementExtensionDeps: IdeaRefinementExtensionDeps = {
+	analyzeFailedRunForResume,
+	runIdeaRefinementResumeWorkflow,
+	runIdeaRefinementWorkflow,
+	runResponseValidatorCheck,
+};
 
 function shouldNotifyProgressEvent(event: Parameters<typeof applyIdeaRefinementProgressEvent>[1]): boolean {
 	switch (event.type) {
@@ -50,15 +70,58 @@ async function collectIdea(args: string, ctx: ExtensionCommandContext): Promise<
 	return idea && idea.length > 0 ? idea : undefined;
 }
 
+function describeLoopExecutionEstimate(loops: number): { stageCount: number; minMinutes: number; maxMinutes: number } {
+	const stageCount = FIXED_STAGE_COUNT + (loops * STAGES_PER_LOOP);
+	return {
+		stageCount,
+		minMinutes: loops * ESTIMATED_MINUTES_PER_LOOP_MIN,
+		maxMinutes: loops * ESTIMATED_MINUTES_PER_LOOP_MAX,
+	};
+}
+
+async function confirmLoopCountIfNeeded(ctx: ExtensionCommandContext, loops: number): Promise<boolean> {
+	if (loops > LOOP_COUNT_HARD_LIMIT) {
+		ctx.ui.notify(`Loop count ${loops} exceeds the hard limit of ${LOOP_COUNT_HARD_LIMIT}. Choose a smaller value.`, "warning");
+		return false;
+	}
+	if (loops <= LOOP_COUNT_SOFT_CONFIRM_THRESHOLD) return true;
+
+	const estimate = describeLoopExecutionEstimate(loops);
+	const message = [
+		`This run schedules approximately ${estimate.stageCount} subprocess stages.`,
+		`Expected runtime: roughly ${estimate.minMinutes}-${estimate.maxMinutes} minutes, depending on model/tool activity.`,
+		"Token/cost usage also scales with the number of loops.",
+		"Do you want to continue with this large loop count?",
+	].join("\n");
+
+	if (typeof ctx.ui.confirm === "function") {
+		const confirmed = await ctx.ui.confirm("Large loop count confirmation", message);
+		if (!confirmed) {
+			ctx.ui.notify("Loop count was not confirmed. Choose a smaller value or confirm the large run.", "info");
+		}
+		return confirmed;
+	}
+
+	const fallback = await ctx.ui.input("Type YES to confirm the large loop count", `YES to continue with ${loops} loops`);
+	const confirmed = fallback?.trim().toUpperCase() === "YES";
+	if (!confirmed) {
+		ctx.ui.notify("Loop count was not confirmed. Choose a smaller value or confirm the large run.", "info");
+	}
+	return confirmed;
+}
+
 async function collectLoopCount(ctx: ExtensionCommandContext, title = "How many development loops do you want to run?", placeholder = "Enter a positive integer"): Promise<number | undefined> {
 	while (true) {
 		const input = await ctx.ui.input(title, placeholder);
 		if (input === undefined) return undefined;
 
 		const parsed = parsePositiveInteger(input);
-		if (parsed !== undefined) return parsed;
+		if (parsed === undefined) {
+			ctx.ui.notify("Invalid value. Enter a positive integer.", "warning");
+			continue;
+		}
 
-		ctx.ui.notify("Invalid value. Enter a positive integer.", "warning");
+		if (await confirmLoopCountIfNeeded(ctx, parsed)) return parsed;
 	}
 }
 
@@ -78,8 +141,11 @@ async function collectResumeFinalLoopCount(ctx: ExtensionCommandContext, lastCon
 		);
 		if (input === undefined) return undefined;
 		const parsed = parsePositiveInteger(input);
-		if (parsed !== undefined && parsed >= lastConsistentLoop) return parsed;
-		ctx.ui.notify(`Invalid value. Enter a positive integer >= ${lastConsistentLoop}.`, "warning");
+		if (parsed === undefined || parsed < lastConsistentLoop) {
+			ctx.ui.notify(`Invalid value. Enter a positive integer >= ${lastConsistentLoop}.`, "warning");
+			continue;
+		}
+		if (await confirmLoopCountIfNeeded(ctx, parsed)) return parsed;
 	}
 }
 
@@ -116,6 +182,15 @@ function getCurrentModelPattern(ctx: ExtensionCommandContext): string | undefine
 	return `${ctx.model.provider}/${ctx.model.id}`;
 }
 
+function getCurrentThinkingLevel(pi: ExtensionAPI): string | undefined {
+	try {
+		const thinkingLevel = pi.getThinkingLevel?.();
+		return typeof thinkingLevel === "string" && thinkingLevel.length > 0 ? thinkingLevel : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function buildPauseResumeHelp(isPaused: boolean): string {
 	return isPaused
 		? `Paused • ${PAUSE_SHORTCUT} resume • ${STOP_SHORTCUT} stop`
@@ -140,7 +215,8 @@ function handleStopShortcut(runtimeControl: WorkflowRuntimeControl, runInProgres
 	ctx.ui.notify(result.message, "warning");
 }
 
-export default function ideaRefinementExtension(pi: ExtensionAPI) {
+export function createIdeaRefinementExtension(deps: IdeaRefinementExtensionDeps = defaultIdeaRefinementExtensionDeps) {
+return function ideaRefinementExtension(pi: ExtensionAPI) {
 	let runInProgress = false;
 	const runtimeControl = new WorkflowRuntimeControl();
 
@@ -266,18 +342,19 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			}, HEARTBEAT_MS);
 
 			try {
-				const result = await runIdeaRefinementWorkflow({
+				const result = await deps.runIdeaRefinementWorkflow({
 					cwd: ctx.cwd,
 					idea,
 					loops,
 					modelPattern: getCurrentModelPattern(ctx),
+					thinkingLevel: getCurrentThinkingLevel(pi),
 					onStatus: updateUiStatus,
 					onEvent: handleProgressEvent,
 					runtimeControl,
 				});
 
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				runResponseValidatorCheck(responsePath).catch((err) => {
+				deps.runResponseValidatorCheck(responsePath).catch((err) => {
 					console.error("[idea-refinement] Validator check failed:", err);
 				});
 
@@ -341,7 +418,7 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 
 			let analysis;
 			try {
-				analysis = await analyzeFailedRunForResume(ctx.cwd, sourceCallSpecifier);
+				analysis = await deps.analyzeFailedRunForResume(ctx.cwd, sourceCallSpecifier);
 			} catch (error) {
 				ctx.ui.notify(`Resume analysis failed: ${error instanceof Error ? error.message : String(error)}`, "error");
 				return;
@@ -423,19 +500,20 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			}, HEARTBEAT_MS);
 
 			try {
-				const result = await runIdeaRefinementResumeWorkflow({
+				const result = await deps.runIdeaRefinementResumeWorkflow({
 					cwd: ctx.cwd,
 					sourceCallSpecifier,
 					finalLoopCount,
 					workaroundInstructions,
 					modelPattern: getCurrentModelPattern(ctx),
+					thinkingLevel: getCurrentThinkingLevel(pi),
 					onStatus: updateUiStatus,
 					onEvent: handleProgressEvent,
 					runtimeControl,
 				});
 
 				const responsePath = path.join(result.callDir, "RESPONSE.md");
-				runResponseValidatorCheck(responsePath).catch((err) => {
+				deps.runResponseValidatorCheck(responsePath).catch((err) => {
 					console.error("[idea-refinement] Validator check failed:", err);
 				});
 
@@ -470,4 +548,7 @@ export default function ideaRefinementExtension(pi: ExtensionAPI) {
 			}
 		},
 	});
+};
 }
+
+export default createIdeaRefinementExtension();

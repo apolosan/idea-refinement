@@ -1,6 +1,6 @@
 {
   "name": "@apolosan/idea-refinement",
-  "version": "1.8.7",
+  "version": "1.9.0",
   "description": "Pi Coding Agent extension that runs a forced iterative idea-refinement workflow via the /idea-refine command.",
   "keywords": [
     "pi-package",
@@ -35,7 +35,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types tests/run-tests.ts"
+    "test": "node --experimental-strip-types tests/run-tests.ts",
+    "test:ci": "node --experimental-strip-types tests/run-tests.ts",
+    "release:check": "npm run typecheck && npm run test:ci && npm pack --dry-run"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

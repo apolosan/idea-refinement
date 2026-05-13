@@ -202,6 +202,7 @@ export async function run(): Promise<void> {
 			await fs.access(path.resolve(dir, filePath));
 		}
 		await fs.access(path.join(result.callDir, "run.json"));
+		await fs.access(path.resolve(dir, result.manifest.auxiliaryFiles.guardAuditLog));
 
 		// X1 fix: minimum content assertions for bootstrap artifacts
 		const directive = await fs.readFile(path.resolve(dir, result.manifest.files.directive), "utf-8");
@@ -232,6 +233,8 @@ export async function run(): Promise<void> {
 		assert.equal(loop.loopNumber, 1);
 		assert.ok(loop.randomNumber >= 1 && loop.randomNumber <= 100);
 		assert.equal(loop.score, 70);
+		assert.ok(loop.backlogPath.includes("loop_01/BACKLOG.md"));
+		assert.deepEqual(loop.rawAttemptPaths, { develop: [], evaluate: [], learning: [] });
 		assert.ok(loop.stages.develop.status === "success" || loop.stages.develop.status === "failed");
 		assert.ok(loop.stages.evaluate.status === "success" || loop.stages.evaluate.status === "failed");
 		assert.ok(loop.stages.learning.status === "success" || loop.stages.learning.status === "failed");
@@ -598,6 +601,12 @@ export async function run(): Promise<void> {
 		assert.equal(resumed.resumeAnalysis.lastConsistentLoop, 1);
 		assert.equal(resumed.resumeAnalysis.failureCategory, "loop_evaluate_failed");
 		assert.equal(resumed.manifest.resume?.sourceCallId, "artifacts_call_01");
+		assert.equal(resumed.manifest.resume?.resumeContextPath, `${resumed.relativeCallDir}/RESUME_CONTEXT.md`);
+		assert.deepEqual(resumed.manifest.resume?.carriedForwardLoopNumbers, [1]);
+		assert.equal(resumed.manifest.loops[0]?.carriedForwardFrom?.sourceLoopNumber, 1);
+		assert.equal(resumed.manifest.loops[0]?.stages.develop.status, "carried_forward");
+		assert.match(resumed.manifest.loops[0]?.stages.develop.logPath ?? "", /artifacts_call_02\/logs\/loop_01_develop/);
+		assert.match(resumed.manifest.loops[0]?.stages.develop.carriedForwardFrom?.sourceLogPath ?? "", /artifacts_call_01\/logs\/loop_01_develop/);
 		await fs.access(path.join(resumed.callDir, "RESUME_CONTEXT.md"));
 		await fs.access(path.join(resumed.callDir, "loops", "loop_01", "RESPONSE.md"));
 		await fs.access(path.join(resumed.callDir, "loops", "loop_02", "RESPONSE.md"));
@@ -717,6 +726,7 @@ export async function run(): Promise<void> {
 		assert.equal(result.manifest.loops[0]?.score, 70);
 		assert.equal(parseInt(await fs.readFile(invocation.counterPath, "utf8"), 10), 2);
 		await fs.access(path.join(result.callDir, "loops", "loop_01", "evaluate-raw-attempt-1.md"));
+		assert.deepEqual(result.manifest.loops[0]?.rawAttemptPaths.evaluate, [`${result.relativeCallDir}/loops/loop_01/evaluate-raw-attempt-1.md`]);
 		assert.ok(statuses.some((status) => status.includes("Missing or invalid Overall score in FEEDBACK.md")));
 		console.log("✓ CHK-04/05/06: missing score retries, captures raw attempt, then succeeds");
 	});
