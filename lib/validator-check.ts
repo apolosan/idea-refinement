@@ -15,6 +15,13 @@ import { recordValidatorCheckOnManifest } from "./manifest.ts";
 import { toProjectRelativePath } from "./path-utils.ts";
 import { validateResponse } from "./response-validator.ts";
 
+function escapeMarkdownTableCell(value: unknown): string {
+	return String(value ?? "")
+		.replace(/\|/g, "\\|")
+		.replace(/\r?\n/g, "<br>")
+		.replace(/`/g, "\\`");
+}
+
 export async function runResponseValidatorCheck(
 	responsePath: string,
 	options: { manifestPath?: string; cwd?: string } = {},
@@ -26,23 +33,28 @@ export async function runResponseValidatorCheck(
 	}
 
 	const text = await readFile(responsePath, "utf-8");
-	const { checks, score, maxScore } = validateResponse(text, "full");
+	const { checks, score, maxScore, passed } = validateResponse(text, "full");
 
 	const outputPath = resolve(dirname(responsePath), "validator-check-output.md");
 	await mkdir(dirname(outputPath), { recursive: true });
+	const displayResponsePath = options.cwd ? toProjectRelativePath(options.cwd, responsePath) : responsePath;
 
 	const output = [
 		"# Validator Check (integrated, non-critical)",
 		"",
-		`- **RESPONSE.md**: ${responsePath}`,
+		`- **RESPONSE.md**: ${displayResponsePath}`,
+		`- **Strictness**: full`,
 		`- **Score**: ${score}/${maxScore}`,
-		`- **Status**: ${score >= 50 ? "PASS" : "FAIL (≥50/85 to pass)"}`,
+		`- **Status**: ${passed ? "PASS" : "FAIL (≥50/85 to pass)"}`,
 		"",
 		"## Checks",
 		"",
 		"| Check | Name | Result | Detail |",
 		"|-------|------|--------|--------|",
-		...checks.map((c) => `| ${c.name.split(":")[0]} | ${c.name.split(":").slice(1).join(":").trim()} | ${c.passed ? "✓" : "✗"} | ${c.detail} |`),
+		...checks.map((c) => {
+			const [checkId, ...nameParts] = c.name.split(":");
+			return `| ${escapeMarkdownTableCell(checkId)} | ${escapeMarkdownTableCell(nameParts.join(":").trim())} | ${c.passed ? "✓" : "✗"} | ${escapeMarkdownTableCell(c.detail)} |`;
+		}),
 		"",
 		"---",
 		`*Generated at ${new Date().toISOString()} by validator-check.ts*`,

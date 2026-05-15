@@ -10,19 +10,19 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.9.2
+## What's New in 1.10.0
 
-Release **1.9.2** continua o endurecimento de governança e clarifica limites operacionais.
+Release **1.10.0** focuses on hardening, reliability, release hygiene, and language consistency.
 
 Highlights:
 
-- **Guard do subprocesso mais estrito**: resolução de caminhos relativos ao `cwd`, bloqueio de escapes para fora do projeto em `read`/`ls`/`tree`, e bloqueio explícito de edições em `artifacts_call_01` (histórico imutável).
-- **Manifesto e herança**: `carriedForward` booleano, `seededFromRun` / `seededFromLoop`, e registo do output do validador no `run.json` para auditoria.
-- **Loops e plataforma**: confirmação acima de 20 loops, teto duro 1000; aviso quando pausa por `SIGSTOP`/`SIGCONT` não é fiável (Windows).
-- **Peer range explícito** para `@mariozechner/pi-coding-agent` e CI de testes alinhado (`npm ci` + typecheck + pack dry-run).
-- **ADR** do papel do validador (`docs/adr/0001-response-validator-role.md`).
-
-Release **1.9.0** (governança e hardening de release) permanece descrita em detalhe no `CHANGELOG.md`.
+- **Realpath-aware subprocess guard**: `read`, inspection commands, and `edit` now reject symlink escapes in addition to lexical `..` escapes.
+- **Workflow correctness hardening**: loop limits are enforced in the workflow API, command startup is locked earlier, final artifacts are structurally validated, and stage success is recorded only after persistence completes.
+- **Safer resume handling**: resume sources must resolve to `docs/idea_refinement/artifacts_call_NN` inside the active project.
+- **Parser and validator improvements**: marker parsing now distinguishes strict success extraction from explicit recovery mode, and validator-check output escapes Markdown table cells while recording relative paths.
+- **Manifest and snapshot hardening**: manifest normalization validates additional ranges and invariants; snapshot checks avoid scope escapes and hash files by stream.
+- **Release hygiene**: CI now runs a high-severity npm audit, package dry-run uses JSON output, duplicate workflow configuration was removed, and the vulnerable `fast-xml-builder` transitive dependency is overridden to a safe version.
+- **American English standardization**: versioned source and public documentation are standardized on American English.
 
 ## Recent: 1.8.7
 

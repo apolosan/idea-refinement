@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { execSync } from "node:child_process";
 
 export async function run(): Promise<void> {
 	// B37: Verify that mkdtemp + chmod 0o700 produces correct permissions

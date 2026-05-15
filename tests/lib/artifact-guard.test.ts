@@ -82,6 +82,19 @@ export async function run(): Promise<void> {
 		assert.match(readBlocked?.reason, /project scope/);
 		console.log("✓ artifact-guard restricts read to the project scope");
 
+		const outsideSecret = path.join(os.tmpdir(), `idea-refinement-outside-${process.pid}-${Date.now()}.txt`);
+		const symlinkPath = path.join(dir, "src", "outside-secret-link.txt");
+		await fs.writeFile(outsideSecret, "secret outside project\n", "utf-8");
+		await fs.symlink(outsideSecret, symlinkPath);
+		const symlinkReadBlocked = await handler!(
+			{ type: "tool_call", toolName: "read", input: { path: symlinkPath } },
+			{ cwd: dir },
+		);
+		assert.equal(symlinkReadBlocked?.block, true);
+		assert.match(symlinkReadBlocked?.reason, /symlinks/);
+		await fs.rm(outsideSecret, { force: true });
+		console.log("✓ artifact-guard blocks project-local symlink reads that escape the project scope");
+
 		const bashAllowed = await handler!(
 			{ type: "tool_call", toolName: "bash", input: { command: "ls docs/idea_refinement/artifacts_call_01" } },
 			{ cwd: dir },
@@ -112,6 +125,26 @@ export async function run(): Promise<void> {
 		assert.match(runningRootEdit?.reason, /protected by the active idea-refinement workflow/);
 		console.log("✓ artifact-guard blocks edit inside active protected root");
 
+		writeFileSync(path.join(protectedRoot, "run.json"), JSON.stringify({ status: "success" }), "utf-8");
+		const completedRootEdit = await handler!(
+			{ type: "tool_call", toolName: "edit", input: { path: path.join(protectedRoot, "RESPONSE.md"), oldText: "a", newText: "b" } },
+			{ cwd: dir },
+		);
+		assert.equal(completedRootEdit, undefined);
+
+		const outsideEditSecret = path.join(os.tmpdir(), `idea-refinement-edit-outside-${process.pid}-${Date.now()}.txt`);
+		const editSymlinkPath = path.join(protectedRoot, "outside-edit-link.md");
+		await fs.writeFile(outsideEditSecret, "outside edit target\n", "utf-8");
+		await fs.symlink(outsideEditSecret, editSymlinkPath);
+		const symlinkEditBlocked = await handler!(
+			{ type: "tool_call", toolName: "edit", input: { path: editSymlinkPath, oldText: "a", newText: "b" } },
+			{ cwd: dir },
+		);
+		assert.equal(symlinkEditBlocked?.block, true);
+		assert.match(symlinkEditBlocked?.reason, /symlinks/);
+		await fs.rm(outsideEditSecret, { force: true });
+		console.log("✓ artifact-guard blocks protected-root symlink edits that escape the workspace");
+
 		const historicalEdit = await handler!(
 			{ type: "tool_call", toolName: "edit", input: { path: historicalArtifact, oldText: "old", newText: "new" } },
 			{ cwd: dir },
@@ -138,7 +171,7 @@ export async function run(): Promise<void> {
 		delete process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS;
 	});
 
-	await withTempDir(async (dir) => {
+	await withTempDir(async (_dir) => {
 		delete process.env.PI_IDEA_REFINEMENT_PROTECTED_ROOTS;
 		const pi = createMockPi();
 		artifactGuardExtension(pi as any);

@@ -118,9 +118,8 @@ Synonym end marker test with sufficient content length.
 	assert.ok(endOfFileSynonym["DIRECTIVE.md"].includes("Synonym end"));
 	console.log("✓ extractMarkedSections accepts END OF FILE closing synonym");
 
-	// Strategy 6: no END markers — infer bodies between consecutive BEGIN headers
-	const beginOnlyBootstrap = extractMarkedSections(
-		`<<<BEGIN FILE: DIRECTIVE.md>>>
+	// Recovery mode: no END markers are rejected by default, then accepted only when explicitly requested.
+	const beginOnlyPayload = `<<<BEGIN FILE: DIRECTIVE.md>>>
 Directive body with enough non-whitespace characters here.
 <<<BEGIN FILE: LEARNING.md>>>
 Learning body with enough non-whitespace characters here.
@@ -131,12 +130,19 @@ Diagnosis body with enough non-whitespace characters here.
 <<<BEGIN FILE: METRICS.md>>>
 Metrics body with enough non-whitespace characters here.
 <<<BEGIN FILE: BACKLOG.md>>>
-Backlog body with enough non-whitespace characters here.`,
+Backlog body with enough non-whitespace characters here.`;
+	assert.throws(
+		() => extractMarkedSections(beginOnlyPayload, ["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"]),
+		/Missing marked section/,
+	);
+	const beginOnlyBootstrap = extractMarkedSections(
+		beginOnlyPayload,
 		["DIRECTIVE.md", "LEARNING.md", "CRITERIA.md", "DIAGNOSIS.md", "METRICS.md", "BACKLOG.md"],
+		{ allowSequentialBegins: true },
 	);
 	assert.ok(beginOnlyBootstrap["DIRECTIVE.md"].includes("Directive body"));
 	assert.ok(beginOnlyBootstrap["BACKLOG.md"].includes("Backlog body"));
-	console.log("✓ extractMarkedSections infers sections when END markers are missing");
+	console.log("✓ extractMarkedSections rejects missing END markers unless recovery mode is enabled");
 
 	// Error message includes diagnostic info
 	try {

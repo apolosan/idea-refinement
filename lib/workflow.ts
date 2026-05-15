@@ -44,6 +44,8 @@ import type {
 import type { WorkflowRuntimeControl } from "./workflow-runtime-control.ts";
 import { stageDisplayName, buildStageStatusMessage } from "./ui-monitor.ts";
 import { determineDirectivePolicy, extractOverallScore } from "./validation.ts";
+import { assertValidLoopCount } from "./workflow-limits.ts";
+import { validateChecklistArtifact, validateReportArtifact } from "./final-artifact-validator.ts";
 
 export interface WorkflowRunInput {
 	cwd: string;
@@ -118,10 +120,15 @@ async function fileExists(filePath: string): Promise<boolean> {
 function resolveSourceCallDir(cwd: string, sourceCallSpecifier: string): string {
 	const trimmed = sourceCallSpecifier.trim();
 	if (!trimmed) throw new Error("Resume requires a failed run path or call index.");
-	if (/^\d+$/.test(trimmed)) {
-		return path.join(cwd, "docs", "idea_refinement", getCallDirectoryName(Number.parseInt(trimmed, 10)));
+	const resumeRoot = path.join(cwd, "docs", "idea_refinement");
+	const resolved = /^\d+$/.test(trimmed)
+		? path.join(resumeRoot, getCallDirectoryName(Number.parseInt(trimmed, 10)))
+		: path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(cwd, trimmed);
+	const relative = path.relative(resumeRoot, resolved);
+	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative) || !/^artifacts_call_\d+$/.test(path.basename(resolved))) {
+		throw new Error(`Resume source must be an artifacts_call_NN directory inside ${resumeRoot}.`);
 	}
-	return path.isAbsolute(trimmed) ? trimmed : path.resolve(cwd, trimmed);
+	return resolved;
 }
 
 function isSuccessfulOrCarriedForwardStage(status: StageRecord["status"]): boolean {
@@ -194,7 +201,16 @@ function buildResumeContextDocument(analysis: ResumeSourceAnalysis, workaroundIn
 
 export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier: string): Promise<ResumeSourceAnalysis> {
 	const sourceCallDir = resolveSourceCallDir(cwd, sourceCallSpecifier);
-	const sourceManifestPath = path.join(sourceCallDir, "run.json");
+	const resumeRoot = path.join(cwd, "docs", "idea_refinement");
+	const [resumeRootRealPath, sourceCallRealPath] = await Promise.all([
+		fs.realpath(resumeRoot),
+		fs.realpath(sourceCallDir),
+	]);
+	const realRelative = path.relative(resumeRootRealPath, sourceCallRealPath);
+	if (realRelative === "" || realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
+		throw new Error(`Resume source must resolve inside ${resumeRoot}.`);
+	}
+	const sourceManifestPath = path.join(sourceCallRealPath, "run.json");
 	let manifestRaw: WorkflowManifest;
 	try {
 		manifestRaw = await readManifest(sourceManifestPath);
@@ -206,16 +222,16 @@ export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier
 		throw new Error(`Resume requires a failed run. Current status at ${sourceManifestPath}: ${manifestRaw.status}`);
 	}
 
-	const sourceRelativeCallDir = toProjectRelativePath(cwd, sourceCallDir);
+	const sourceRelativeCallDir = toProjectRelativePath(cwd, sourceCallRealPath);
 	const missingArtifacts: string[] = [];
 	const bootstrapRequiredPaths = [
-		path.join(sourceCallDir, "IDEA.md"),
-		path.join(sourceCallDir, "DIRECTIVE.md"),
-		path.join(sourceCallDir, "CRITERIA.md"),
-		path.join(sourceCallDir, "DIAGNOSIS.md"),
-		path.join(sourceCallDir, "METRICS.md"),
-		path.join(sourceCallDir, "LEARNING.md"),
-		path.join(sourceCallDir, "BACKLOG.md"),
+		path.join(sourceCallRealPath, "IDEA.md"),
+		path.join(sourceCallRealPath, "DIRECTIVE.md"),
+		path.join(sourceCallRealPath, "CRITERIA.md"),
+		path.join(sourceCallRealPath, "DIAGNOSIS.md"),
+		path.join(sourceCallRealPath, "METRICS.md"),
+		path.join(sourceCallRealPath, "LEARNING.md"),
+		path.join(sourceCallRealPath, "BACKLOG.md"),
 	];
 	for (const artifactPath of bootstrapRequiredPaths) {
 		if (!(await fileExists(artifactPath))) missingArtifacts.push(path.basename(artifactPath));
@@ -225,7 +241,7 @@ export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier
 	for (let loopNumber = 1; loopNumber <= manifestRaw.completedLoops; loopNumber += 1) {
 		const loop = manifestRaw.loops.find((entry) => entry.loopNumber === loopNumber);
 		if (!loop) break;
-		const loopDir = path.join(sourceCallDir, "loops", getLoopDirectoryName(loopNumber));
+		const loopDir = path.join(sourceCallRealPath, "loops", getLoopDirectoryName(loopNumber));
 		const filesOk = await Promise.all([
 			fileExists(path.join(loopDir, "RESPONSE.md")),
 			fileExists(path.join(loopDir, "FEEDBACK.md")),
@@ -244,7 +260,7 @@ export async function analyzeFailedRunForResume(cwd: string, sourceCallSpecifier
 	const lastConsistentScore = manifestRaw.loops.find((loop) => loop.loopNumber === lastConsistentLoop)?.score;
 
 	return {
-		sourceCallDir,
+		sourceCallDir: sourceCallRealPath,
 		sourceRelativeCallDir,
 		sourceManifestPath,
 		sourceManifest: manifestRaw,
@@ -326,6 +342,7 @@ async function runManagedStage(options: {
 	onEvent?: (event: WorkflowProgressEvent) => void;
 	statusMessage: string;
 	resultValidator?: (result: StageExecutionResult) => Promise<void> | void;
+	persistResult?: (result: StageExecutionResult) => Promise<void> | void;
 	earlySuccessValidator?: (normalizedAssistantText: string) => boolean;
 	/** Inactivity timeout override for this stage (ms). Default handled by runner. */
 	timeoutMs?: number;
@@ -353,6 +370,7 @@ async function runManagedStage(options: {
 		onEvent,
 		statusMessage,
 		resultValidator,
+		persistResult,
 		earlySuccessValidator,
 		timeoutMs,
 		runtimeControl,
@@ -422,6 +440,7 @@ async function runManagedStage(options: {
 			const message = validationError instanceof Error ? validationError.message : String(validationError);
 			throw new StageValidationError(message, result);
 		}
+		await persistResult?.(result);
 		markStageSuccess(record, result);
 		await saveManifest(manifestPath, manifest);
 		emitWorkflowEvent(onEvent, {
@@ -481,7 +500,7 @@ async function runBootstrapStage(options: {
 
 	for (let attempt = 1; attempt <= BOOTSTRAP_MAX_RETRIES; attempt++) {
 		try {
-			const bootstrapResult = await runManagedStage({
+			await runManagedStage({
 				cwd,
 				protectedRoots: [workspace.callDir],
 				modelPattern,
@@ -518,10 +537,19 @@ async function runBootstrapStage(options: {
 				resultValidator: (result) => {
 					validateBootstrapText(result.text);
 				},
+				persistResult: async (result) => {
+					const parsedSections = extractMarkedSections(result.text, BOOTSTRAP_REQUIRED_FILES);
+					await writeMarkdownFile(workspace.rootFiles.directive, parsedSections["DIRECTIVE.md"]);
+					await writeMarkdownFile(workspace.rootFiles.learning, parsedSections["LEARNING.md"]);
+					await writeMarkdownFile(workspace.rootFiles.criteria, parsedSections["CRITERIA.md"]);
+					await writeMarkdownFile(workspace.rootFiles.diagnosis, parsedSections["DIAGNOSIS.md"]);
+					await writeMarkdownFile(workspace.rootFiles.metrics, parsedSections["METRICS.md"]);
+					await writeMarkdownFile(workspace.rootFiles.backlog, parsedSections["BACKLOG.md"]);
+					sections = parsedSections;
+				},
 				runtimeControl,
 				invocation,
 			});
-			sections = extractMarkedSections(bootstrapResult.text, BOOTSTRAP_REQUIRED_FILES);
 			break; // Success — exit retry loop
 		} catch (parseError) {
 			if (!isSectionExtractionError(parseError)) throw parseError;
@@ -553,13 +581,6 @@ async function runBootstrapStage(options: {
 	if (!sections) {
 		throw new Error(`Bootstrap extraction failed unexpectedly. Last error: ${lastBootstrapError?.message}`);
 	}
-	await writeMarkdownFile(workspace.rootFiles.directive, sections["DIRECTIVE.md"]);
-	await writeMarkdownFile(workspace.rootFiles.learning, sections["LEARNING.md"]);
-	await writeMarkdownFile(workspace.rootFiles.criteria, sections["CRITERIA.md"]);
-	await writeMarkdownFile(workspace.rootFiles.diagnosis, sections["DIAGNOSIS.md"]);
-	await writeMarkdownFile(workspace.rootFiles.metrics, sections["METRICS.md"]);
-	await writeMarkdownFile(workspace.rootFiles.backlog, sections["BACKLOG.md"]);
-	await saveManifest(workspace.rootFiles.manifest, manifest);
 
 	return sections;
 }
@@ -602,7 +623,7 @@ async function runLoop(options: {
 		maxFiles: 5000,
 	});
 
-	const developResult = await runManagedStage({
+	await runManagedStage({
 		cwd,
 		protectedRoots: [workspace.callDir],
 		modelPattern,
@@ -632,9 +653,11 @@ async function runLoop(options: {
 		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
+		persistResult: async (result) => {
+			await writeMarkdownFile(workspace.rootFiles.response, result.text);
+			await writeMarkdownFile(path.join(loopDir, "RESPONSE.md"), result.text);
+		},
 	});
-	await writeMarkdownFile(workspace.rootFiles.response, developResult.text);
-	await writeMarkdownFile(path.join(loopDir, "RESPONSE.md"), developResult.text);
 
 	// Snapshot C7: compare refinement-artifact state before/after develop output persistence.
 	const snapshotAfter = await takeSnapshot(workspace.callDir, {
@@ -722,10 +745,19 @@ async function runLoop(options: {
 				resultValidator: (result) => {
 					validateEvaluateLearningText(result.text);
 				},
+				persistResult: async (result) => {
+					const parsedSections = extractMarkedSections(result.text, [...EVALUATE_REQUIRED_FILES]);
+					await writeMarkdownFile(workspace.rootFiles.feedback, parsedSections["FEEDBACK.md"]);
+					await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), parsedSections["FEEDBACK.md"]);
+					await writeMarkdownFile(workspace.rootFiles.learning, parsedSections["LEARNING.md"]);
+					await writeMarkdownFile(workspace.rootFiles.backlog, parsedSections["BACKLOG.md"]);
+					await writeMarkdownFile(path.join(loopDir, "LEARNING.md"), parsedSections["LEARNING.md"]);
+					await writeMarkdownFile(path.join(loopDir, "BACKLOG.md"), parsedSections["BACKLOG.md"]);
+					evalLearnSections = parsedSections;
+				},
 				runtimeControl,
 				invocation,
 			});
-			evalLearnSections = extractMarkedSections(evaluateLearningResult.text, [...EVALUATE_REQUIRED_FILES]);
 			break;
 		} catch (parseError) {
 			if (!isRetryableEvaluateValidationError(parseError)) throw parseError;
@@ -760,8 +792,6 @@ async function runLoop(options: {
 		throw new Error(`Evaluate/learning extraction failed unexpectedly. Last error: ${lastEvaluateParseError?.message}`);
 	}
 
-	await writeMarkdownFile(workspace.rootFiles.feedback, evalLearnSections["FEEDBACK.md"]);
-	await writeMarkdownFile(path.join(loopDir, "FEEDBACK.md"), evalLearnSections["FEEDBACK.md"]);
 
 	const score = extractOverallScore(evalLearnSections["FEEDBACK.md"]);
 	loopEntry.score = score;
@@ -774,11 +804,17 @@ async function runLoop(options: {
 	loopEntry.stages.learning.model = evaluateLearningResult.model;
 	loopEntry.stages.learning.stopReason = evaluateLearningResult.stopReason;
 	loopEntry.stages.learning.usage = evaluateLearningResult.usage;
+	emitWorkflowEvent(onEvent, {
+		type: "stage_completed",
+		relativeCallDir,
+		requestedLoops: loops,
+		completedLoops: manifest.completedLoops,
+		stageName: "learning",
+		stageStatus: "success",
+		loopNumber,
+		message: buildStageStatusMessage("Learning artifacts updated."),
+	});
 
-	await writeMarkdownFile(workspace.rootFiles.learning, evalLearnSections["LEARNING.md"]);
-	await writeMarkdownFile(workspace.rootFiles.backlog, evalLearnSections["BACKLOG.md"]);
-	await writeMarkdownFile(path.join(loopDir, "LEARNING.md"), evalLearnSections["LEARNING.md"]);
-	await writeMarkdownFile(path.join(loopDir, "BACKLOG.md"), evalLearnSections["BACKLOG.md"]);
 
 	loopEntry.completedAt = new Date().toISOString();
 	manifest.completedLoops = loopNumber;
@@ -814,7 +850,7 @@ async function runFinalStages(options: {
 	runtimeControl?.ensureNotStopped();
 
 	// C1 fix: Use manifest.report directly instead of creating a local StageRecord
-	const reportResult = await runManagedStage({
+	await runManagedStage({
 		cwd,
 		protectedRoots: [workspace.callDir],
 		modelPattern,
@@ -842,11 +878,19 @@ async function runFinalStages(options: {
 		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
+		resultValidator: (result) => {
+			const validation = validateReportArtifact(result.text);
+			if (!validation.passed) {
+				throw new Error(`REPORT.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`);
+			}
+		},
+		persistResult: async (result) => {
+			await writeMarkdownFile(workspace.rootFiles.report, result.text);
+		},
 	});
-	await writeMarkdownFile(workspace.rootFiles.report, reportResult.text);
 
 	// C1 fix: Use manifest.checklist directly instead of creating a local StageRecord
-	const checklistResult = await runManagedStage({
+	await runManagedStage({
 		cwd,
 		protectedRoots: [workspace.callDir],
 		modelPattern,
@@ -874,8 +918,16 @@ async function runFinalStages(options: {
 		userPromptTransport: "stdin",
 		runtimeControl,
 		invocation,
+		resultValidator: (result) => {
+			const validation = validateChecklistArtifact(result.text);
+			if (!validation.passed) {
+				throw new Error(`CHECKLIST.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`);
+			}
+		},
+		persistResult: async (result) => {
+			await writeMarkdownFile(workspace.rootFiles.checklist, result.text);
+		},
 	});
-	await writeMarkdownFile(workspace.rootFiles.checklist, checklistResult.text);
 }
 
 async function copyIfExists(sourcePath: string, targetPath: string): Promise<boolean> {
@@ -988,6 +1040,7 @@ async function seedResumedWorkspace(options: {
 
 export async function runIdeaRefinementResumeWorkflow(input: WorkflowResumeInput): Promise<WorkflowResumeResult> {
 	const { cwd, sourceCallSpecifier, finalLoopCount, workaroundInstructions, modelPattern, thinkingLevel, onStatus, onEvent, runtimeControl, invocation } = input;
+	assertValidLoopCount(finalLoopCount, "final loop target");
 	runtimeControl?.ensureNotStopped();
 	const analysis = await analyzeFailedRunForResume(cwd, sourceCallSpecifier);
 	if (finalLoopCount < analysis.lastConsistentLoop) {
@@ -1096,6 +1149,7 @@ export async function runIdeaRefinementResumeWorkflow(input: WorkflowResumeInput
 
 export async function runIdeaRefinementWorkflow(input: WorkflowRunInput): Promise<WorkflowRunResult> {
 	const { cwd, idea, loops, modelPattern, thinkingLevel, onStatus, onEvent, runtimeControl, invocation } = input;
+	assertValidLoopCount(loops, "requested loops");
 	runtimeControl?.ensureNotStopped();
 	const { callNumber, workspace } = await allocateCallWorkspace(cwd);
 	const relativeCallDir = toProjectRelativePath(cwd, workspace.callDir);

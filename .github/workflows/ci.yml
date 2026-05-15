@@ -30,5 +30,8 @@ jobs:
       - name: Test
         run: npm run test:ci
 
+      - name: Security audit
+        run: npm audit --audit-level=high
+
       - name: Package sanity check
-        run: npm pack --dry-run
+        run: npm pack --dry-run --json

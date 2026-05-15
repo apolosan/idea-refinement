@@ -1,28 +1,56 @@
 # Changelog
 
+## 1.10.0 - 2026-05-15
+
+### Added
+- Realpath-aware path guard helpers in `lib/path-guards.ts`, with regression coverage for symlink escapes.
+- `lib/workflow-limits.ts` centralizes loop-count policy and enforces the hard limit in the workflow API.
+- `lib/final-artifact-validator.ts` validates required `REPORT.md` and `CHECKLIST.md` headings before final artifacts are accepted.
+- CI now includes `npm audit --audit-level=high`, and `release:check` includes the same audit plus JSON package dry-run output.
+
+### Changed
+- `artifact-guard.ts` now blocks project-local symlinks that resolve outside the project or protected workspace.
+- Resume sources must resolve to an `artifacts_call_NN` directory inside `docs/idea_refinement` for the active project.
+- Stage success is now recorded after stage output persistence, reducing the chance of a successful stage with missing artifacts.
+- Marker parsing now uses strict complete-marker extraction by default and exposes explicit recovery mode for diagnostics.
+- `validator-check` now escapes Markdown table cells, uses relative paths when possible, and relies on validator `passed` status.
+- `post-hoc-check` hashes files by stream and rejects snapshot scopes that resolve outside the extension root.
+- Public documentation and versioned source text are standardized on American English.
+- `.gitignore` and `.npmignore` now ignore generated `docs/idea_refinement` artifacts without hiding ADR documentation.
+
+### Fixed
+- Startup locking now begins before interactive prompt collection to reduce duplicate workflow starts.
+- The workflow monitor receives a completion event for the synthetic `learning` stage in the combined evaluate+learning flow.
+- `findNextCallNumber()` now treats only `ENOENT` as an empty call-root condition and propagates other filesystem errors.
+- The transitive `fast-xml-builder` vulnerability is resolved through a package override to a safe version.
+
+### Removed
+- Duplicate GitHub Actions workflow configuration in `.github/workflows/test.yml`.
+- Dead JSON-string extraction helper from `lib/runner.ts`.
+
 ## 1.9.2 - 2026-05-15
 
 ### Added
-- `docs/adr/0001-response-validator-role.md`: decisão explícita de que o `validator-check` é **QA offline com visibilidade** (não gate do workflow).
-- `lib/platform-support.ts` e aviso no `/idea-refine` quando `SIGSTOP`/`SIGCONT` não estão disponíveis (por exemplo Windows).
-- Registo opcional do resultado do validador em `run.json` (`auxiliaryFiles.responseValidatorOutput`, `lastValidatorCheckScore`) via `recordValidatorCheckOnManifest()`.
-- Metadados de herança em `LoopManifestEntry`: `carriedForward`, `seededFromRun`, `seededFromLoop` (além de `carriedForwardFrom`).
+- `docs/adr/0001-response-validator-role.md`: explicit decision that `validator-check` is **offline QA with visibility**, not a workflow gate.
+- `lib/platform-support.ts` and a `/idea-refine` warning for platforms where `SIGSTOP`/`SIGCONT` are unavailable, such as Windows.
+- Optional validator-result recording in `run.json` (`auxiliaryFiles.responseValidatorOutput`, `lastValidatorCheckScore`) through `recordValidatorCheckOnManifest()`.
+- Carry-forward metadata in `LoopManifestEntry`: `carriedForward`, `seededFromRun`, and `seededFromLoop`, in addition to `carriedForwardFrom`.
 
 ### Changed
-- `artifact-guard.ts`: leituras e `ls`/`tree` resolvem caminhos relativos ao `cwd` e exigem ficar **dentro do projeto**; edições em `docs/idea_refinement/artifacts_call_01/**` são bloqueadas; `ls`/`tree` validam o destino resolvido contra o `cwd`.
-- Limites de loops no comando: confirmação acima de **20** loops; recusa acima de **1000** (alinhado à documentação).
-- `peerDependencies` de `@mariozechner/pi-coding-agent` passa a faixa testada `>=0.72.0 <1.0.0`.
-- `lib/validator-check.ts`: escrita atómica do output; pode atualizar o manifesto quando recebe `manifestPath` + `cwd`.
-- `.github/workflows/test.yml`: alinhado ao CI principal (`npm ci`, typecheck, testes, `npm pack --dry-run`).
-- `README.md`: plataformas suportadas, limites de loops e compatibilidade de peer.
+- `artifact-guard.ts`: reads and `ls`/`tree` resolve paths relative to `cwd` and must stay **inside the project**; edits in `docs/idea_refinement/artifacts_call_01/**` are blocked; `ls`/`tree` validate the resolved target against `cwd`.
+- Command loop limits: confirmation above **20** loops and refusal above **1000**, aligned with documentation.
+- `peerDependencies` for `@mariozechner/pi-coding-agent` now declare the tested range `>=0.72.0 <1.0.0`.
+- `lib/validator-check.ts`: atomic output writes; it can update the manifest when it receives `manifestPath` + `cwd`.
+- `.github/workflows/test.yml`: aligned with the main CI flow (`npm ci`, typecheck, tests, `npm pack --dry-run`).
+- `README.md`: supported platforms, loop limits, and peer compatibility.
 
 ### Removed
-- Campo `shouldRunFinalStagesOnly` em `ResumeSourceAnalysis` (calculado mas não utilizado no fluxo).
-- Parâmetro `cwd` não usado em `buildPiArgs()` (`lib/runner.ts`).
+- `shouldRunFinalStagesOnly` field in `ResumeSourceAnalysis`, which was calculated but not used by the flow.
+- Unused `cwd` parameter in `buildPiArgs()` (`lib/runner.ts`).
 
 ### Fixed
-- `analyzeFailedRunForResume()` envolve erros de `readManifest()` com mensagem explícita (manifest inválido vs. crash opaco).
-- `writeJsonFile()` documenta que JSON não deve passar por normalização tipo Markdown (preservação de whitespace estrutural).
+- `analyzeFailedRunForResume()` wraps `readManifest()` errors with an explicit message, distinguishing invalid manifests from opaque crashes.
+- `writeJsonFile()` documents that JSON must not pass through Markdown-oriented normalization, preserving structural whitespace.
 
 ## 1.9.0 - 2026-05-13
 

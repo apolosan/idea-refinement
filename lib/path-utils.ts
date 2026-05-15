@@ -78,8 +78,9 @@ export async function findNextCallNumber(baseDir: string): Promise<number> {
 			if (!match) continue;
 			highest = Math.max(highest, Number.parseInt(match[1] ?? "0", 10));
 		}
-	} catch {
-		return 1;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return 1;
+		throw error;
 	}
 
 	return highest + 1;

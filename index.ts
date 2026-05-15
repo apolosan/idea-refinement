@@ -12,15 +12,14 @@ import { WorkflowRuntimeControl } from "./lib/workflow-runtime-control.ts";
 import { analyzeFailedRunForResume, runIdeaRefinementResumeWorkflow, runIdeaRefinementWorkflow } from "./lib/workflow.ts";
 import { parsePositiveInteger } from "./lib/validation.ts";
 import { runResponseValidatorCheck } from "./lib/validator-check.ts";
+import { LOOP_COUNT_HARD_LIMIT, LOOP_COUNT_SOFT_CONFIRM_THRESHOLD } from "./lib/workflow-limits.ts";
 
 const STATUS_KEY = "idea-refinement";
 const WIDGET_KEY = "idea-refinement-monitor";
-const HEARTBEAT_MS = 120;
+const HEARTBEAT_MS = 300;
 const STATUS_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const PAUSE_SHORTCUT = "ctrl+alt+p";
 const STOP_SHORTCUT = "ctrl+alt+x";
-const LOOP_COUNT_SOFT_CONFIRM_THRESHOLD = 20;
-const LOOP_COUNT_HARD_LIMIT = 1000;
 const FIXED_STAGE_COUNT = 3;
 const STAGES_PER_LOOP = 2;
 const ESTIMATED_MINUTES_PER_LOOP_MIN = 3;
@@ -113,7 +112,7 @@ async function confirmLoopCountIfNeeded(ctx: ExtensionCommandContext, loops: num
 
 async function collectLoopCount(ctx: ExtensionCommandContext, title = "How many development loops do you want to run?", placeholder = "Enter a positive integer"): Promise<number | undefined> {
 	ctx.ui.notify(
-		"Sugestão da extensão: em geral, entre 5 e 20 loops costuma equilibrar profundidade e custo/tempo. Pode indicar outro valor à sua escolha.",
+		"Extension suggestion: 5 to 20 loops usually balances depth with cost and runtime. You may choose another value.",
 		"info",
 	);
 	while (true) {
@@ -282,14 +281,30 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			const idea = await collectIdea(args, ctx);
+			runInProgress = true;
+
+			let idea: string | undefined;
+			try {
+				idea = await collectIdea(args, ctx);
+			} catch (error) {
+				runInProgress = false;
+				throw error;
+			}
 			if (!idea) {
+				runInProgress = false;
 				ctx.ui.notify("Run canceled: no idea was provided.", "info");
 				return;
 			}
 
-			const loops = await collectLoopCount(ctx);
+			let loops: number | undefined;
+			try {
+				loops = await collectLoopCount(ctx);
+			} catch (error) {
+				runInProgress = false;
+				throw error;
+			}
 			if (loops === undefined) {
+				runInProgress = false;
 				ctx.ui.notify("Run canceled before loop count was defined.", "info");
 				return;
 			}
@@ -333,7 +348,6 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				renderMonitor();
 			};
 
-			runInProgress = true;
 			runtimeControl.startRun();
 			lastWorkingMessage = undefined;
 			ctx.ui.setWorkingVisible?.(true);
@@ -422,8 +436,11 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				return;
 			}
 
+			runInProgress = true;
+
 			const sourceCallSpecifier = await collectResumeSourceSpecifier(args, ctx);
 			if (!sourceCallSpecifier) {
+				runInProgress = false;
 				ctx.ui.notify("Resume canceled: no failed run path or execution index was provided.", "info");
 				return;
 			}
@@ -432,6 +449,7 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 			try {
 				analysis = await deps.analyzeFailedRunForResume(ctx.cwd, sourceCallSpecifier);
 			} catch (error) {
+				runInProgress = false;
 				ctx.ui.notify(`Resume analysis failed: ${error instanceof Error ? error.message : String(error)}`, "error");
 				return;
 			}
@@ -445,12 +463,14 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				Math.max(analysis.sourceManifest.requestedLoops, analysis.lastConsistentLoop),
 			);
 			if (finalLoopCount === undefined) {
+				runInProgress = false;
 				ctx.ui.notify("Resume canceled before the final loop target was defined.", "info");
 				return;
 			}
 
 			const workaroundInstructions = await collectResumeInstructions(ctx, analysisSummary);
 			if (!workaroundInstructions) {
+				runInProgress = false;
 				ctx.ui.notify("Resume canceled: workaround instructions were not provided.", "info");
 				return;
 			}
@@ -494,7 +514,6 @@ return function ideaRefinementExtension(pi: ExtensionAPI) {
 				renderMonitor();
 			};
 
-			runInProgress = true;
 			runtimeControl.startRun();
 			lastWorkingMessage = undefined;
 			ctx.ui.setWorkingVisible?.(true);

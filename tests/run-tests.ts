@@ -6,6 +6,8 @@ import { run as runManifestTests } from "./lib/manifest.test.ts";
 import { run as runPostHocCheckTests } from "./lib/post-hoc-check.test.ts";
 import { run as runValidationTests } from "./lib/validation.test.ts";
 import { run as runResponseValidatorTests } from "./lib/response-validator.test.ts";
+import { run as runFinalArtifactValidatorTests } from "./lib/final-artifact-validator.test.ts";
+import { run as runWorkflowLimitsTests } from "./lib/workflow-limits.test.ts";
 import { run as runValidatorCheckTests } from "./lib/validator-check.test.ts";
 import { run as runUiMonitorTests } from "./lib/ui-monitor.test.ts";
 import { run as runRunnerTests } from "./lib/runner.test.ts";
@@ -30,6 +32,8 @@ async function run(): Promise<void> {
 		{ name: "post-hoc-check", run: runPostHocCheckTests },
 		{ name: "validation", run: runValidationTests },
 		{ name: "response-validator", run: runResponseValidatorTests },
+		{ name: "final-artifact-validator", run: runFinalArtifactValidatorTests },
+		{ name: "workflow-limits", run: runWorkflowLimitsTests },
 		{ name: "validator-check", run: runValidatorCheckTests },
 		{ name: "ui-monitor", run: runUiMonitorTests },
 		{ name: "runner", run: runRunnerTests },

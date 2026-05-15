@@ -2,7 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
-import { findContainingRoot, parseProtectedRoots, PROTECTED_ROOTS_ENV } from "./lib/path-guards.ts";
+import {
+	findContainingRoot,
+	isPathInsideDirectory,
+	isPathInsideDirectoryByRealPath,
+	parseProtectedRoots,
+	PROTECTED_ROOTS_ENV,
+	resolveTargetPath,
+} from "./lib/path-guards.ts";
 import { terminalStateCache } from "./lib/terminal-state-cache.ts";
 
 const SUBPROCESS_ALLOWED_TOOLS = ["read", "bash", "edit"];
@@ -39,17 +46,19 @@ function isRootInTerminalState(root: string): boolean {
 }
 
 function resolveSubagentPath(cwd: string, targetPath: string): string {
-	return path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(cwd, targetPath);
+	return resolveTargetPath(cwd, targetPath);
 }
 
 function isStrictlyInsideDirectory(resolvedParent: string, resolvedCandidate: string): boolean {
-	if (resolvedCandidate === resolvedParent) return true;
-	const prefix = `${resolvedParent}${path.sep}`;
-	return resolvedCandidate.startsWith(prefix);
+	return isPathInsideDirectory(resolvedParent, resolvedCandidate);
 }
 
 function isInsideProjectScopedCwd(cwd: string, resolvedPath: string): boolean {
 	return isStrictlyInsideDirectory(path.resolve(cwd), resolvedPath);
+}
+
+async function isInsideProjectScopedCwdByRealPath(cwd: string, resolvedPath: string): Promise<boolean> {
+	return isPathInsideDirectoryByRealPath(path.resolve(cwd), resolvedPath);
 }
 
 function truncate(value: string, maxLength = GUARD_AUDIT_MAX_PREVIEW): string {
@@ -198,14 +207,14 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 				});
 			}
 			const resolvedTarget = resolveSubagentPath(ctx.cwd, targetPath);
-			if (isInsideProjectScopedCwd(ctx.cwd, resolvedTarget)) return;
+			if (isInsideProjectScopedCwd(ctx.cwd, resolvedTarget) && await isInsideProjectScopedCwdByRealPath(ctx.cwd, resolvedTarget)) return;
 			return blockWithAudit({
 				protectedRoots,
 				cwd: ctx.cwd,
 				toolName: event.toolName,
 				input: event.input,
 				targetPath,
-				reason: `Read is restricted to the current project scope (${ctx.cwd}).`,
+				reason: `Read is restricted to the current project scope (${ctx.cwd}) and must not escape through symlinks.`,
 			});
 		}
 
@@ -232,17 +241,23 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 				});
 			}
 			const resolvedTarget = resolveSubagentPath(ctx.cwd, parsedCommand.targetPath);
-			if (!isInsideProjectScopedCwd(ctx.cwd, resolvedTarget)) {
+			if (!isInsideProjectScopedCwd(ctx.cwd, resolvedTarget) || !await isInsideProjectScopedCwdByRealPath(ctx.cwd, resolvedTarget)) {
 				return blockWithAudit({
 					protectedRoots,
 					cwd: ctx.cwd,
 					toolName: event.toolName,
 					input: event.input,
 					targetPath: parsedCommand.targetPath,
-					reason: "Directory inspection paths must stay inside the project cwd (no path escapes).",
+					reason: "Directory inspection paths must stay inside the project cwd and must not escape through symlinks.",
 				});
 			}
-			const allowed = protectedRoots.some((root) => isStrictlyInsideDirectory(path.resolve(root), resolvedTarget));
+			let allowed = false;
+			for (const root of protectedRoots) {
+				if (await isPathInsideDirectoryByRealPath(path.resolve(root), resolvedTarget)) {
+					allowed = true;
+					break;
+				}
+			}
 			if (allowed) return;
 			return blockWithAudit({
 				protectedRoots,
@@ -279,14 +294,15 @@ export default function artifactGuardExtension(pi: ExtensionAPI) {
 				});
 			}
 
-			if (!isStrictlyInsideDirectory(path.resolve(containingRoot), resolvedTarget)) {
+			if (!isStrictlyInsideDirectory(path.resolve(containingRoot), resolvedTarget)
+				|| !await isPathInsideDirectoryByRealPath(path.resolve(containingRoot), resolvedTarget)) {
 				return blockWithAudit({
 					protectedRoots,
 					cwd: ctx.cwd,
 					toolName: event.toolName,
 					input: event.input,
 					targetPath,
-					reason: "Edit paths must resolve inside the active protected call workspace (no path escapes).",
+					reason: "Edit paths must resolve inside the active protected call workspace and must not escape through symlinks.",
 				});
 			}
 

@@ -281,9 +281,22 @@ function ensureInteger(value: unknown, field: string, sourcePath: string, minimu
 	return value as number;
 }
 
+function ensureNumberInRange(value: unknown, field: string, sourcePath: string, minimum: number, maximum: number): number {
+	if (typeof value !== "number" || !Number.isFinite(value) || value < minimum || value > maximum) {
+		throw new Error(`Invalid workflow manifest at ${sourcePath}: ${field} must be a number between ${minimum} and ${maximum}.`);
+	}
+	return value;
+}
+
 function ensureWorkflowStatus(value: unknown, field: string, sourcePath: string): WorkflowStatus {
 	if (value === "running" || value === "success" || value === "failed") return value;
 	throw new Error(`Invalid workflow manifest at ${sourcePath}: ${field} must be one of running, success, failed.`);
+}
+
+function ensureDirectivePolicy(value: unknown, field: string, sourcePath: string): WorkflowManifest["directivePolicy"] {
+	if (value === undefined) return undefined;
+	if (value === "OPTIMIZATION" || value === "CREATIVITY/EXPLORATION") return value;
+	throw new Error(`Invalid workflow manifest at ${sourcePath}: ${field} must be OPTIMIZATION or CREATIVITY/EXPLORATION.`);
 }
 
 function ensureResumeFailureCategory(value: unknown, field: string, sourcePath: string): ResumeFailureCategory {
@@ -303,6 +316,11 @@ function ensureResumeFailureCategory(value: unknown, field: string, sourcePath: 
 function ensureStageStatus(value: unknown, field: string, sourcePath: string): StageStatus {
 	if (value === "pending" || value === "running" || value === "success" || value === "failed" || value === "carried_forward") return value;
 	throw new Error(`Invalid workflow manifest at ${sourcePath}: ${field} must be a valid stage status.`);
+}
+
+function ensureStageName(value: unknown, field: string, sourcePath: string): StageName {
+	if (value === "bootstrap" || value === "develop" || value === "evaluate" || value === "learning" || value === "report" || value === "checklist") return value;
+	throw new Error(`Invalid workflow manifest at ${sourcePath}: ${field} must be a valid stage name.`);
 }
 
 function ensureStringArray(value: unknown, field: string, sourcePath: string): string[] {
@@ -340,7 +358,7 @@ function normalizeCarriedForwardStageMetadata(value: unknown, field: string, sou
 		sourceCallDir: ensureString(value.sourceCallDir, `${field}.sourceCallDir`, sourcePath),
 		sourceCallId: ensureString(value.sourceCallId, `${field}.sourceCallId`, sourcePath),
 		sourceLoopNumber: typeof value.sourceLoopNumber === "number" ? ensureInteger(value.sourceLoopNumber, `${field}.sourceLoopNumber`, sourcePath, 1) : undefined,
-		sourceStageName: ensureString(value.sourceStageName, `${field}.sourceStageName`, sourcePath) as StageName,
+		sourceStageName: ensureStageName(value.sourceStageName, `${field}.sourceStageName`, sourcePath),
 		sourceStatus: ensureStageStatus(value.sourceStatus, `${field}.sourceStatus`, sourcePath),
 		sourceLogPath: optionalString(value.sourceLogPath),
 		sourceStderrPath: optionalString(value.sourceStderrPath),
@@ -355,13 +373,13 @@ function normalizeCarriedForwardStageMetadata(value: unknown, field: string, sou
 function normalizeStageRecord(value: unknown, field: string, sourcePath: string, fallbackName: StageName): StageRecord {
 	const record = ensureObject(value, field, sourcePath);
 	return {
-		name: (optionalString(record.name) as StageName | undefined) ?? fallbackName,
+		name: record.name === undefined ? fallbackName : ensureStageName(record.name, `${field}.name`, sourcePath),
 		status: ensureStageStatus(record.status, `${field}.status`, sourcePath),
 		startedAt: optionalString(record.startedAt),
 		completedAt: optionalString(record.completedAt),
 		logPath: ensureString(record.logPath, `${field}.logPath`, sourcePath),
 		stderrPath: ensureString(record.stderrPath, `${field}.stderrPath`, sourcePath),
-		exitCode: typeof record.exitCode === "number" ? record.exitCode : undefined,
+		exitCode: record.exitCode === undefined ? undefined : ensureInteger(record.exitCode, `${field}.exitCode`, sourcePath, 0),
 		model: optionalString(record.model),
 		stopReason: optionalString(record.stopReason),
 		errorMessage: optionalString(record.errorMessage),
@@ -370,7 +388,7 @@ function normalizeStageRecord(value: unknown, field: string, sourcePath: string,
 			output: ensureInteger(record.usage.output, `${field}.usage.output`, sourcePath, 0),
 			cacheRead: ensureInteger(record.usage.cacheRead, `${field}.usage.cacheRead`, sourcePath, 0),
 			cacheWrite: ensureInteger(record.usage.cacheWrite, `${field}.usage.cacheWrite`, sourcePath, 0),
-			cost: typeof record.usage.cost === "number" ? record.usage.cost : 0,
+			cost: record.usage.cost === undefined ? 0 : ensureNumberInRange(record.usage.cost, `${field}.usage.cost`, sourcePath, 0, Number.MAX_SAFE_INTEGER),
 			turns: ensureInteger(record.usage.turns, `${field}.usage.turns`, sourcePath, 0),
 			contextTokens: ensureInteger(record.usage.contextTokens, `${field}.usage.contextTokens`, sourcePath, 0),
 		} : undefined,
@@ -401,7 +419,13 @@ function normalizeLoopEntry(value: unknown, sourcePath: string, callDir: string)
 		: carriedForwardFrom?.sourceLoopNumber;
 	return {
 		loopNumber,
-		randomNumber: ensureInteger(record.randomNumber, `loops[${loopNumber}].randomNumber`, sourcePath, 1),
+		randomNumber: ensureNumberInRange(
+			ensureInteger(record.randomNumber, `loops[${loopNumber}].randomNumber`, sourcePath, 1),
+			`loops[${loopNumber}].randomNumber`,
+			sourcePath,
+			1,
+			100,
+		),
 		startedAt: optionalString(record.startedAt),
 		completedAt: optionalString(record.completedAt),
 		carriedForwardAt: optionalString(record.carriedForwardAt),
@@ -409,7 +433,7 @@ function normalizeLoopEntry(value: unknown, sourcePath: string, callDir: string)
 		carriedForward,
 		seededFromRun,
 		seededFromLoop,
-		score: typeof record.score === "number" ? record.score : undefined,
+		score: record.score === undefined ? undefined : ensureNumberInRange(record.score, `loops[${loopNumber}].score`, sourcePath, 1, 100),
 		c7Snapshot: isObject(record.c7Snapshot) ? {
 			hasChanges: record.c7Snapshot.hasChanges === true,
 			diffSummary: ensureString(record.c7Snapshot.diffSummary, `loops[${loopNumber}].c7Snapshot.diffSummary`, sourcePath),
@@ -480,8 +504,14 @@ function normalizeManifest(raw: unknown, sourcePath: string): WorkflowManifest {
 		completedLoops: ensureInteger(root.completedLoops, "completedLoops", sourcePath, 0),
 		model: optionalString(root.model),
 		thinkingLevel: optionalString(root.thinkingLevel),
-		initialRandomNumber: typeof root.initialRandomNumber === "number" ? root.initialRandomNumber : undefined,
-		directivePolicy: optionalString(root.directivePolicy) as WorkflowManifest["directivePolicy"],
+		initialRandomNumber: root.initialRandomNumber === undefined ? undefined : ensureNumberInRange(
+			ensureInteger(root.initialRandomNumber, "initialRandomNumber", sourcePath, 1),
+			"initialRandomNumber",
+			sourcePath,
+			1,
+			100,
+		),
+		directivePolicy: ensureDirectivePolicy(root.directivePolicy, "directivePolicy", sourcePath),
 		resume: undefined,
 		files: {
 			idea: ensureString(files.idea, "files.idea", sourcePath),
@@ -500,7 +530,7 @@ function normalizeManifest(raw: unknown, sourcePath: string): WorkflowManifest {
 			guardAuditLog: optionalString(auxiliaryFilesRecord.guardAuditLog) ?? `${callDir}/logs/guard-denials.jsonl`,
 			resumeContext: fallbackResumeContextPath,
 			responseValidatorOutput: optionalString(auxiliaryFilesRecord.responseValidatorOutput),
-			lastValidatorCheckScore: typeof auxiliaryFilesRecord.lastValidatorCheckScore === "number" ? auxiliaryFilesRecord.lastValidatorCheckScore : undefined,
+			lastValidatorCheckScore: auxiliaryFilesRecord.lastValidatorCheckScore === undefined ? undefined : ensureNumberInRange(auxiliaryFilesRecord.lastValidatorCheckScore, "auxiliaryFiles.lastValidatorCheckScore", sourcePath, 0, 85),
 		},
 		rawAttemptPaths: normalizeWorkflowRawAttemptPaths(root.rawAttemptPaths, "rawAttemptPaths", sourcePath),
 		bootstrap: normalizeStageRecord(root.bootstrap, "bootstrap", sourcePath, "bootstrap"),
@@ -512,6 +542,16 @@ function normalizeManifest(raw: unknown, sourcePath: string): WorkflowManifest {
 	};
 
 	normalizedManifest.resume = normalizeResumeMetadata(root.resume, sourcePath, normalizedLoops, fallbackResumeContextPath);
+	if (normalizedManifest.completedLoops > normalizedManifest.requestedLoops) {
+		throw new Error(`Invalid workflow manifest at ${sourcePath}: completedLoops cannot exceed requestedLoops.`);
+	}
+	const seenLoopNumbers = new Set<number>();
+	for (const loop of normalizedLoops) {
+		if (seenLoopNumbers.has(loop.loopNumber)) {
+			throw new Error(`Invalid workflow manifest at ${sourcePath}: duplicate loopNumber ${loop.loopNumber}.`);
+		}
+		seenLoopNumbers.add(loop.loopNumber);
+	}
 	return normalizedManifest;
 }
 

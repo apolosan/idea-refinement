@@ -194,24 +194,6 @@ function shouldPersistStdoutLogLine(line: string): boolean {
 	return KEEP_RE.test(line);
 }
 
-// O8 fix: Simplified JSON string extraction using regex
-function extractJsonStringValueAfter(line: string, anchor: string, fieldName: string): string | undefined {
-	const anchorIndex = line.indexOf(anchor);
-	if (anchorIndex === -1) return undefined;
-
-	const token = `"${fieldName}":"`;
-	const match = line.slice(anchorIndex).match(new RegExp(`${token}(.*?)(?:"[,}]|$)`));
-	if (!match) return undefined;
-
-	const rawValue = match[1] ?? "";
-	if (!rawValue.includes("\\")) return rawValue;
-
-	try {
-		return JSON.parse(`"${rawValue}"`);
-	} catch {
-		return undefined;
-	}
-}
 
 async function finalizeWriteStream(stream: fs.WriteStream): Promise<void> {
 	if (stream.writableFinished || stream.destroyed) {

@@ -3,5 +3,7 @@ tests/
 .ralph/
 .github/
 IMPROVEMENTS.md
-docs/
+docs/idea_refinement/
+!docs/adr/
+!docs/adr/*.md
 *.tgz

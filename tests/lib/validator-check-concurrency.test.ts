@@ -55,7 +55,7 @@ export async function run(): Promise<void> {
 		}
 
 		// Run all validator checks concurrently
-		const results = await Promise.all(
+		await Promise.all(
 			dirs.map((subDir) =>
 				runResponseValidatorCheck(path.join(subDir, "RESPONSE.md"))
 			)

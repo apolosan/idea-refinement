@@ -13,8 +13,10 @@
  */
 
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
+import { isPathInsideDirectory, isPathInsideDirectoryByRealPath } from "./path-guards.ts";
 
 export interface FileSnapshot {
 	[relativePath: string]: string; // SHA256 hex digest
@@ -35,6 +37,17 @@ export interface TakeSnapshotOptions {
 	ignoreDirs?: string[];
 }
 
+async function hashFile(filePath: string): Promise<string> {
+	const hash = createHash("sha256");
+	await new Promise<void>((resolve, reject) => {
+		const stream = createReadStream(filePath);
+		stream.on("data", (chunk) => hash.update(chunk));
+		stream.on("error", reject);
+		stream.on("end", resolve);
+	});
+	return hash.digest("hex");
+}
+
 /**
  * Takes a SHA256 snapshot of matching files in the target directory.
  * Returns a map of relative path → hash.
@@ -45,9 +58,10 @@ export async function takeSnapshot(extensionRoot: string, options?: TakeSnapshot
 	const { scope, maxDepth = Infinity, maxFiles = Infinity, fileExtensions = [".ts"], ignoreDirs = [] } = options ?? {};
 	const allowedExtensions = new Set(fileExtensions);
 	const ignoredDirectories = new Set(["node_modules", ...ignoreDirs]);
+	const resolvedRoot = path.resolve(extensionRoot);
 
 	try {
-		await fs.access(extensionRoot);
+		await fs.access(resolvedRoot);
 	} catch {
 		return snapshot;
 	}
@@ -82,23 +96,24 @@ export async function takeSnapshot(extensionRoot: string, options?: TakeSnapshot
 			if (entry.isDirectory() && !ignoredDirectories.has(entry.name) && !entry.name.startsWith(".")) {
 				await walkDir(fullPath, depth + 1);
 			} else if (entry.isFile() && allowedExtensions.has(path.extname(entry.name))) {
-				const relPath = path.relative(extensionRoot, fullPath);
+				const relPath = path.relative(resolvedRoot, fullPath);
 				try {
-					const content = await fs.readFile(fullPath, "utf-8");
-					snapshot[relPath] = createHash("sha256").update(content, "utf-8").digest("hex");
+					snapshot[relPath] = await hashFile(fullPath);
 					fileCount++;
 				} catch {
-					// skip unreadable files
+					// Skip unreadable files.
 				}
 			}
 		}
 	}
 
 	const roots = scope && scope.length > 0
-		? scope.map((s) => path.resolve(extensionRoot, s))
-		: [extensionRoot];
+		? scope.map((s) => path.resolve(resolvedRoot, s))
+		: [resolvedRoot];
 
 	for (const root of roots) {
+		if (!isPathInsideDirectory(resolvedRoot, root)) continue;
+		if (!await isPathInsideDirectoryByRealPath(resolvedRoot, root)) continue;
 		await walkDir(root, 0);
 	}
 

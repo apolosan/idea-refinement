@@ -9,5 +9,8 @@ dist/
 
 .ralph/
 .pi/
-docs/
+docs/idea_refinement/
+!docs/
+!docs/adr/
+!docs/adr/*.md
 IMPROVEMENTS.md

@@ -1,17 +1,26 @@
+export interface ExtractMarkedSectionsOptions {
+	/**
+	 * Recovery mode for diagnostics/raw-attempt handling. When true, the parser can infer
+	 * a section from consecutive BEGIN markers even when END markers are missing.
+	 * Production success paths should keep this false.
+	 */
+	allowSequentialBegins?: boolean;
+}
+
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
- * Collapses common LLM marker variants into the strict `<<<BEGIN FILE:name>>>` / `<<<END FILE:name>>>`
- * spelling so regex strategies (1–4) and diagnostics that count `<<<END FILE:` are not fooled by
- * spaces around colons, casing drift, or `END OF FILE` phrasing.
+ * Collapses common LLM marker variants into the strict `<<<BEGIN FILE: name>>>` / `<<<END FILE: name>>>`
+ * spelling so extraction and diagnostics are not fooled by spaces around colons,
+ * casing drift, or `END OF FILE` phrasing.
  */
 function canonicalizeMarkerDelimiters(text: string): string {
 	let s = text;
-	s = s.replace(/<<<\s*BEGIN\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<BEGIN FILE:${String(label).trim()}>>>`);
-	s = s.replace(/<<<\s*END\s+OF\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE:${String(label).trim()}>>>`);
-	s = s.replace(/<<<\s*END\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE:${String(label).trim()}>>>`);
+	s = s.replace(/<<<\s*BEGIN\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<BEGIN FILE: ${String(label).trim()}>>>`);
+	s = s.replace(/<<<\s*END\s+OF\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE: ${String(label).trim()}>>>`);
+	s = s.replace(/<<<\s*END\s+FILE\s*:\s*(.+?)\s*>>>/gi, (_m, label: string) => `<<<END FILE: ${String(label).trim()}>>>`);
 	return s;
 }
 
@@ -25,16 +34,15 @@ function markerLabelBasename(label: string): string {
 }
 
 /**
- * Strategy 5: scan for begin/end pairs where the label is a full path or relative path,
- * but basename matches the expected artifact name (e.g. `docs/.../FEEDBACK.md` vs `FEEDBACK.md`).
- * Also tolerates extra spaces inside markers (`<<< BEGIN FILE : name >>>`).
+ * Scans for begin/end pairs where labels may be full paths, but the basename
+ * matches the expected artifact name.
  */
 function tryExtractSectionByBasename(normalized: string, fileName: string): string | null {
 	const expected = fileName.trim().toLowerCase();
 	if (!expected) return null;
 
-	const beginRe = /<<<\s*BEGIN\s+FILE\s*:\s*(.+?)\s*>>>/g;
-	const endRe = /<<<\s*END\s+FILE\s*:\s*(.+?)\s*>>>/g;
+	const beginRe = /<<<BEGIN FILE:\s*(.+?)>>>/g;
+	const endRe = /<<<END FILE:\s*(.+?)>>>/g;
 
 	let beginMatch: RegExpExecArray | null;
 	while ((beginMatch = beginRe.exec(normalized)) !== null) {
@@ -58,14 +66,15 @@ function tryExtractSectionByBasename(normalized: string, fileName: string): stri
 }
 
 /**
- * Strategy 6: infer spans between consecutive <<<BEGIN FILE:...>>> headers.
- * Handles models that omit END markers (token truncation) while still emitting all BEGIN headers.
+ * Recovery strategy: infer spans between consecutive BEGIN headers.
+ * This is useful for diagnostics/raw-attempt recovery, but it is unsafe for
+ * success validation because the final artifact might be truncated.
  */
 function tryExtractSectionSequentialBegins(normalized: string, fileName: string): string | null {
 	const expected = fileName.trim().toLowerCase();
 	if (!expected) return null;
 
-	const beginRe = /<<<BEGIN FILE:(.+?)>>>/g;
+	const beginRe = /<<<BEGIN FILE:\s*(.+?)>>>/g;
 	const headers: Array<{ rawLabel: string; index: number; headerLen: number }> = [];
 	let m: RegExpExecArray | null;
 	while ((m = beginRe.exec(normalized)) !== null) {
@@ -81,7 +90,7 @@ function tryExtractSectionSequentialBegins(normalized: string, fileName: string)
 		const bodyEnd = i + 1 < headers.length ? headers[i + 1].index : normalized.length;
 		let body = normalized.slice(bodyStart, bodyEnd).trim();
 		const esc = escapeRegExp(basename);
-		body = body.replace(new RegExp(`(?:\\n|^)<<<END FILE:${esc}>>>\\s*$`, "i"), "").trimEnd();
+		body = body.replace(new RegExp(`(?:\\n|^)<<<END FILE:\\s*${esc}>>>\\s*$`, "i"), "").trimEnd();
 		return body;
 	}
 
@@ -89,8 +98,7 @@ function tryExtractSectionSequentialBegins(normalized: string, fileName: string)
 }
 
 /**
- * O3 fix: Validate that each extracted section has minimum content (10 non-whitespace chars).
- * Previously, empty content was silently accepted, which could break the workflow.
+ * Validate that each extracted section has minimum content (10 non-whitespace chars).
  */
 const MIN_SECTION_CONTENT_LENGTH = 10;
 
@@ -99,80 +107,55 @@ const MIN_SECTION_CONTENT_LENGTH = 10;
  * that may be wrapped inside them by the LLM.
  */
 function stripMarkdownCodeFences(text: string): string {
-	// Remove fenced code blocks: ```markdown ... ``` or ``` ... ```
-	// Handles optional language specifier after opening fence
 	return text
 		.replace(/```(?:markdown|md|text)?\s*\n?/g, "")
 		.replace(/```/g, "");
 }
 
 /**
- * Attempts to extract a marked section using progressively more lenient strategies.
- *
- * Strategy 1: Exact match (original strict regex, multiline)
- * Strategy 2: Same markers but allowing content on same line as begin/end
- * Strategy 3: Strip markdown code fences first, then try exact match
- * Strategy 4: Lenient — allow any whitespace between markers and content
- * Strategy 5: Basename / flexible-marker scan — tolerates path-prefixed labels and extra spaces inside `<<< >>>`
- * Strategy 6: Sequential BEGIN-only spans — tolerates missing END markers (truncation)
+ * Attempts to extract a marked section using progressively more lenient complete-marker strategies.
+ * Missing END-marker recovery is opt-in via `allowSequentialBegins`.
  */
-function tryExtractSection(normalized: string, fileName: string): string | null {
+function tryExtractSection(normalized: string, fileName: string, options: ExtractMarkedSectionsOptions): string | null {
 	const escapedName = escapeRegExp(fileName);
+	const markerName = `FILE:\\s*${escapedName}`;
 
-	// Strategy 1: Original strict pattern — requires newline after begin and before end
+	// Strategy 1: strict pair, content on following lines.
 	let match = normalized.match(
 		new RegExp(
-			`<<<BEGIN FILE: ${escapedName}>>>\\s*\\n([\\s\\S]*?)\\n<<<END FILE: ${escapedName}>>>`,
+			`<<<BEGIN ${markerName}>>>\\s*\\n([\\s\\S]*?)\\n<<<END ${markerName}>>>`,
 			"m",
 		),
 	);
 	if (match) return (match[1] ?? "").trim();
 
-	// Strategy 2: Content may start on the same line as begin marker
+	// Strategy 2: content may start on the same line as the begin marker.
 	match = normalized.match(
 		new RegExp(
-			`<<<BEGIN FILE: ${escapedName}>>>\\s*([\\s\\S]*?)\\n<<<END FILE: ${escapedName}>>>`,
+			`<<<BEGIN ${markerName}>>>\\s*([\\s\\S]*?)<<<END ${markerName}>>>`,
 			"m",
 		),
 	);
 	if (match) return (match[1] ?? "").trim();
 
-	// Strategy 3: Strip markdown code fences before matching
+	// Strategy 3: strip markdown code fences before matching.
 	const stripped = stripMarkdownCodeFences(normalized);
 	if (stripped !== normalized) {
-		match = stripped.match(
-			new RegExp(
-				`<<<BEGIN FILE: ${escapedName}>>>\\s*\\n?([\\s\\S]*?)\\n?<<<END FILE: ${escapedName}>>>`,
-				"m",
-			),
-		);
-		if (match) return (match[1] ?? "").trim();
+		const fenced = tryExtractSection(stripped, fileName, { allowSequentialBegins: false });
+		if (fenced !== null) return fenced;
 	}
 
-	// Strategy 4: Most lenient — allow any whitespace layout
-	match = normalized.match(
-		new RegExp(
-			`<<<BEGIN FILE: ${escapedName}>>>\\s*([\\s\\S]*?)<<<END FILE: ${escapedName}>>>`,
-			"m",
-		),
-	);
-	if (match) return (match[1] ?? "").trim();
-
-	// Strategy 5: path-prefixed or otherwise mismatched labels sharing the correct basename
+	// Strategy 4: labels sharing the correct basename, including path-prefixed labels.
 	let byBasename = tryExtractSectionByBasename(normalized, fileName);
-	if (byBasename === null) {
-		const stripped = stripMarkdownCodeFences(normalized);
-		if (stripped !== normalized) byBasename = tryExtractSectionByBasename(stripped, fileName);
-	}
+	if (byBasename === null && stripped !== normalized) byBasename = tryExtractSectionByBasename(stripped, fileName);
 	if (byBasename !== null) return byBasename;
 
-	// Strategy 6: sequential BEGIN headers only (truncation / missing END markers)
-	let sequential = tryExtractSectionSequentialBegins(normalized, fileName);
-	if (sequential === null) {
-		const strippedSeq = stripMarkdownCodeFences(normalized);
-		if (strippedSeq !== normalized) sequential = tryExtractSectionSequentialBegins(strippedSeq, fileName);
+	// Strategy 5: opt-in recovery for BEGIN-only streams.
+	if (options.allowSequentialBegins) {
+		let sequential = tryExtractSectionSequentialBegins(normalized, fileName);
+		if (sequential === null && stripped !== normalized) sequential = tryExtractSectionSequentialBegins(stripped, fileName);
+		if (sequential !== null) return sequential;
 	}
-	if (sequential !== null) return sequential;
 
 	return null;
 }
@@ -184,7 +167,6 @@ function tryExtractSection(normalized: string, fileName: string): string | null 
 function getDiagnosticSnippet(text: string, keyword: string, contextRadius = 200): string {
 	const index = text.toLowerCase().indexOf(keyword.toLowerCase());
 	if (index === -1) {
-		// No marker at all — return start of text
 		const snippet = text.slice(0, contextRadius);
 		return snippet.length < text.length ? `${snippet}...` : snippet;
 	}
@@ -195,14 +177,14 @@ function getDiagnosticSnippet(text: string, keyword: string, contextRadius = 200
 	return `${prefix}${text.slice(start, end)}${suffix}`;
 }
 
-export function extractMarkedSections(rawText: string, fileNames: string[]): Record<string, string> {
+export function extractMarkedSections(rawText: string, fileNames: string[], options: ExtractMarkedSectionsOptions = {}): Record<string, string> {
 	const normalized = canonicalizeMarkerDelimiters(rawText.replace(/\r\n/g, "\n"));
 	const sections: Record<string, string> = {};
 	const missing: string[] = [];
 	const insufficient: Array<{ name: string; length: number }> = [];
 
 	for (const fileName of fileNames) {
-		const content = tryExtractSection(normalized, fileName);
+		const content = tryExtractSection(normalized, fileName, options);
 
 		if (content === null) {
 			missing.push(fileName);
@@ -230,7 +212,6 @@ export function extractMarkedSections(rawText: string, fileNames: string[]): Rec
 				);
 			}
 		}
-		// Add diagnostic info about what was received
 		const markerKeywords = [...missing, ...insufficient.map((i) => i.name)];
 		const primaryKeyword = markerKeywords[0];
 		if (primaryKeyword) {
