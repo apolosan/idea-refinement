@@ -20,13 +20,7 @@ Highlights:
 - **Final-stage heading validation retry**: `runFinalStages()` retries report and checklist generation up to 3 times when required headings are missing. On each retry, the prompt is reinforced with the explicit list of missing headings to guide the LLM toward compliant output.
 - **Stage reset support**: Added `markStagePending()` to `lib/manifest.ts` for clean stage reset during retry flows.
 
-### Previous: 1.10.0
-
-Release 1.10.0 focused on hardening, reliability, release hygiene, and language consistency, including realpath-aware subprocess guards, workflow correctness hardening, safer resume handling, parser/validator improvements, manifest/snapshot hardening, CI audit, and American English standardization.
-
-## Recent: 1.8.7
-
-Release 1.8.7 focused on bootstrap/evaluate extraction resilience when models emit incomplete marker closures. See `CHANGELOG.md` for full history.
+See `CHANGELOG.md` for full history.
 
 ## Installation
 
