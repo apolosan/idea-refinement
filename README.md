@@ -10,19 +10,19 @@ While it is designed to refine raw ideas into actionable plans, it works just as
 
 A practical note for users: this procedure is intentionally methodical, so it can take a while depending on the number of loops and the complexity of the subject. It is worth approaching it with a bit of patience — the extension is not trying to answer quickly, but to answer better.
 
-## What's New in 1.10.0
+## What's New in 1.11.0
 
-Release **1.10.0** focuses on hardening, reliability, release hygiene, and language consistency.
+Release **1.11.0** focuses on automatic error recovery and self-healing workflow behavior.
 
 Highlights:
 
-- **Realpath-aware subprocess guard**: `read`, inspection commands, and `edit` now reject symlink escapes in addition to lexical `..` escapes.
-- **Workflow correctness hardening**: loop limits are enforced in the workflow API, command startup is locked earlier, final artifacts are structurally validated, and stage success is recorded only after persistence completes.
-- **Safer resume handling**: resume sources must resolve to `docs/idea_refinement/artifacts_call_NN` inside the active project.
-- **Parser and validator improvements**: marker parsing now distinguishes strict success extraction from explicit recovery mode, and validator-check output escapes Markdown table cells while recording relative paths.
-- **Manifest and snapshot hardening**: manifest normalization validates additional ranges and invariants; snapshot checks avoid scope escapes and hash files by stream.
-- **Release hygiene**: CI now runs a high-severity npm audit, package dry-run uses JSON output, duplicate workflow configuration was removed, and the vulnerable `fast-xml-builder` transitive dependency is overridden to a safe version.
-- **American English standardization**: versioned source and public documentation are standardized on American English.
+- **Provider reasoning field auto-recovery**: `runManagedStage()` detects when an LLM provider rejects the `reasoning` field in messages (common with `opencode-go` and similar providers) and automatically retries the stage without the thinking level. No user intervention required.
+- **Final-stage heading validation retry**: `runFinalStages()` retries report and checklist generation up to 3 times when required headings are missing. On each retry, the prompt is reinforced with the explicit list of missing headings to guide the LLM toward compliant output.
+- **Stage reset support**: Added `markStagePending()` to `lib/manifest.ts` for clean stage reset during retry flows.
+
+### Previous: 1.10.0
+
+Release 1.10.0 focused on hardening, reliability, release hygiene, and language consistency, including realpath-aware subprocess guards, workflow correctness hardening, safer resume handling, parser/validator improvements, manifest/snapshot hardening, CI audit, and American English standardization.
 
 ## Recent: 1.8.7
 
