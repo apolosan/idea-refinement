@@ -108,6 +108,17 @@ function isRetryableEvaluateValidationError(error: unknown): error is Error {
 		|| /Missing or invalid Overall score in FEEDBACK\.md/.test(message);
 }
 
+/**
+ * Detects provider errors caused by unsupported `reasoning` field in messages.
+ * Some providers reject the `reasoning` field that pi includes when
+ * thinking/reasoning mode is active, returning a 400 error.
+ */
+function isReasoningFieldError(error: unknown): error is Error {
+	if (!(error instanceof Error)) return false;
+	return /Extra inputs are not permitted.*reasoning/i.test(error.message)
+		|| /messages\[\d+\]\.reasoning/i.test(error.message);
+}
+
 async function fileExists(filePath: string): Promise<boolean> {
 	try {
 		await fs.access(filePath);
@@ -394,7 +405,7 @@ async function runManagedStage(options: {
 	try {
 		const logPath = path.resolve(cwd, record.logPath);
 		const stderrPath = path.resolve(cwd, record.stderrPath);
-		const result = await runPiStage({
+		const stageOptions = {
 			cwd,
 			model: modelPattern,
 			thinkingLevel,
@@ -408,7 +419,7 @@ async function runManagedStage(options: {
 			earlySuccessValidator,
 			timeoutMs,
 			runtimeControl,
-			onProgress: (detail) => {
+			onProgress: (detail: string) => {
 				const message = buildStageStatusMessage(statusMessage, detail);
 				onStatus?.(message);
 				emitWorkflowEvent(onEvent, {
@@ -422,7 +433,7 @@ async function runManagedStage(options: {
 					loopNumber,
 				});
 			},
-			onEvent: (event) => {
+			onEvent: (event: PiStageStreamEvent) => {
 				const mappedEvent = mapPiStageEventToWorkflowEvent({
 					event,
 					relativeCallDir,
@@ -433,7 +444,20 @@ async function runManagedStage(options: {
 				});
 				if (mappedEvent) emitWorkflowEvent(onEvent, mappedEvent);
 			},
-		});
+		};
+
+		// F1 fix: Auto-retry without thinking level when provider rejects the reasoning field.
+		let result: StageExecutionResult;
+		try {
+			result = await runPiStage(stageOptions);
+		} catch (stageError) {
+			if (isReasoningFieldError(stageError) && thinkingLevel) {
+				onStatus?.(`⚠ Provider does not support thinking mode — retrying without it...`);
+				result = await runPiStage({ ...stageOptions, thinkingLevel: undefined });
+			} else {
+				throw stageError;
+			}
+		}
 		try {
 			await resultValidator?.(result);
 		} catch (validationError) {

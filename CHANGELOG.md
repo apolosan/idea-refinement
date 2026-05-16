@@ -1,7 +1,11 @@
 # Changelog
 
-## 1.10.0 - 2026-05-15
+## 1.10.1 - 2026-05-15
 
+### Fixed
+- `runManagedStage()` now detects provider errors caused by unsupported `reasoning` field in messages and automatically retries without the thinking level, preventing workflow failures with providers like `opencode-go` that reject extended thinking fields.
+
+## 1.10.0 - 2026-05-15
 ### Added
 - Realpath-aware path guard helpers in `lib/path-guards.ts`, with regression coverage for symlink escapes.
 - `lib/workflow-limits.ts` centralizes loop-count policy and enforces the hard limit in the workflow API.
