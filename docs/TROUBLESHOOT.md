@@ -32,3 +32,55 @@ If using an older version, set the thinking level to `none` or `off` before runn
 /thinking none
 /idea-refine
 ```
+
+---
+
+## FIXED: REPORT.md missing required headings (v1.11.0+)
+
+### Symptom
+
+```
+Error: REPORT.md is missing required heading(s): # Investigation Report
+
+Error: Workflow failed: REPORT.md is missing required heading(s): # Investigation Report
+
+Error: Idea refinement workflow failed: REPORT.md is missing required heading(s): # Investigation Report
+```
+
+### Root Cause
+
+The LLM generating REPORT.md or CHECKLIST.md sometimes does not include all mandatory headings specified in the system prompt. This can happen due to:
+- Model hallucination or creative interpretation of instructions
+- Context length limitations causing truncation of the prompt
+- Provider-specific behavior differences
+
+### Fix (v1.11.0)
+
+`runFinalStages()` in `lib/workflow.ts` now retries report and checklist generation **up to 3 times** when required headings are missing. On each retry:
+
+1. The previous stage is reset to `pending` status via `markStagePending()`
+2. The original user prompt is reinforced with the explicit error message listing the missing headings
+3. A status message `⚠ Report/Checklist missing headings — retrying (attempt N/3)...` is displayed
+
+### Required Headings
+
+**REPORT.md:**
+- `# Investigation Report`
+- `## Executive summary`
+- `## Context and investigation object`
+- `## Applied methodology`
+- `## Main findings (by criterion)`
+- `## Score evolution (consolidated scoreboard)`
+- `## Firm decisions and active hypotheses`
+- `## Identified risks and mitigations`
+- `## Final recommendations`
+- `## Cross-references (artifacts by loop)`
+
+**CHECKLIST.md:**
+- `# Action Checklist`
+- `## Immediate actions (P0)`
+- `## Short-term actions (P1)`
+- `## Medium-term actions (P2)`
+- `## Long-term actions (P3)`
+- `## Dependencies between actions`
+- `## Acceptance criteria per action`
