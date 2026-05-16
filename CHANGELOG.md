@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.1 - 2026-05-15
+
+### Changed
+- Updated `README.md` and `CHANGELOG.md` to document the 1.11.0 fixes.
+
 ## 1.11.0 - 2026-05-15
 
 ### Fixed
