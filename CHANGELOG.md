@@ -1,9 +1,10 @@
 # Changelog
 
-## 1.10.1 - 2026-05-15
+## 1.11.0 - 2026-05-15
 
 ### Fixed
 - `runManagedStage()` now detects provider errors caused by unsupported `reasoning` field in messages and automatically retries without the thinking level, preventing workflow failures with providers like `opencode-go` that reject extended thinking fields.
+- `runFinalStages()` now retries report and checklist generation up to 3 times when required headings are missing. On each retry, the prompt is reinforced with explicit list of missing headings to guide the LLM toward compliant output.
 
 ## 1.10.0 - 2026-05-15
 ### Added

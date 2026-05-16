@@ -240,6 +240,17 @@ export function markStageFailure(record: StageRecord, error: unknown): void {
 	record.carriedForwardFrom = undefined;
 }
 
+export function markStagePending(record: StageRecord): void {
+	record.status = "pending";
+	record.startedAt = undefined;
+	record.completedAt = undefined;
+	record.exitCode = undefined;
+	record.errorMessage = undefined;
+	record.stopReason = undefined;
+	record.usage = undefined;
+	record.carriedForwardFrom = undefined;
+}
+
 export function markStageCarriedForward(record: StageRecord, source: CarriedForwardStageMetadata): void {
 	record.status = "carried_forward";
 	record.startedAt = undefined;

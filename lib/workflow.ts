@@ -9,6 +9,7 @@ import {
 	createLoopEntry,
 	markStageCarriedForward,
 	markStageFailure,
+	markStagePending,
 	markStageRunning,
 	markStageSuccess,
 	readManifest,
@@ -856,6 +857,17 @@ async function runLoop(options: {
 	return { score };
 }
 
+
+const FINAL_STAGE_MAX_RETRIES = 3;
+
+function buildMissingHeadingReinforcement(errorMessage: string): string {
+	return [
+		"CRITICAL: Your previous response was rejected because it was missing required headings.",
+		errorMessage,
+		"You MUST include these exact headings (case-insensitive) in your response.",
+		"Do NOT skip or rename any heading from the mandatory structure.",
+	].join("\n");
+}
 async function runFinalStages(options: {
 	cwd: string;
 	workspace: Awaited<ReturnType<typeof prepareCallWorkspace>>;
@@ -873,85 +885,129 @@ async function runFinalStages(options: {
 	const { cwd, workspace, loops, modelPattern, thinkingLevel, manifest, relativeCallDir, onStatus, onEvent, runtimeControl, invocation, promptContext } = options;
 	runtimeControl?.ensureNotStopped();
 
-	// C1 fix: Use manifest.report directly instead of creating a local StageRecord
-	await runManagedStage({
-		cwd,
-		protectedRoots: [workspace.callDir],
-		modelPattern,
-		thinkingLevel,
-		record: manifest.report,
-		stageName: "report",
-		requestedLoops: loops,
-		completedLoops: manifest.completedLoops,
-		relativeCallDir,
-		systemPrompt: REPORT_SYSTEM_PROMPT,
-		userPrompt: [
-			buildReportUserPrompt({
-				cwd,
-				workspace,
-				requestedLoops: loops,
-				completedLoops: manifest.completedLoops,
-			}),
-			promptContext,
-		].filter(Boolean).join("\n\n"),
-		manifest,
-		manifestPath: workspace.rootFiles.manifest,
-		onStatus,
-		onEvent,
-		statusMessage: `Consolidating final report: REPORT.md`,
-		userPromptTransport: "stdin",
-		runtimeControl,
-		invocation,
-		resultValidator: (result) => {
-			const validation = validateReportArtifact(result.text);
-			if (!validation.passed) {
-				throw new Error(`REPORT.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`);
-			}
-		},
-		persistResult: async (result) => {
-			await writeMarkdownFile(workspace.rootFiles.report, result.text);
-		},
-	});
+	const manifestPath = workspace.rootFiles.manifest;
 
-	// C1 fix: Use manifest.checklist directly instead of creating a local StageRecord
-	await runManagedStage({
-		cwd,
-		protectedRoots: [workspace.callDir],
-		modelPattern,
-		thinkingLevel,
-		record: manifest.checklist,
-		stageName: "checklist",
-		requestedLoops: loops,
-		completedLoops: manifest.completedLoops,
-		relativeCallDir,
-		systemPrompt: CHECKLIST_SYSTEM_PROMPT,
-		userPrompt: [
-			buildChecklistUserPrompt({
+	// F2 fix: Retry report stage with heading reinforcement on validation failure.
+	const baseReportPrompt = [
+		buildReportUserPrompt({ cwd, workspace, requestedLoops: loops, completedLoops: manifest.completedLoops }),
+		promptContext,
+	].filter(Boolean).join("\n\n");
+
+	let lastReportError: StageValidationError | undefined;
+	for (let attempt = 1; attempt <= FINAL_STAGE_MAX_RETRIES; attempt++) {
+		try {
+			await runManagedStage({
 				cwd,
-				workspace,
+				protectedRoots: [workspace.callDir],
+				modelPattern,
+				thinkingLevel,
+				record: manifest.report,
+				stageName: "report",
 				requestedLoops: loops,
 				completedLoops: manifest.completedLoops,
-			}),
-			promptContext,
-		].filter(Boolean).join("\n\n"),
-		manifest,
-		manifestPath: workspace.rootFiles.manifest,
-		onStatus,
-		onEvent,
-		statusMessage: `Generating action checklist: CHECKLIST.md`,
-		userPromptTransport: "stdin",
-		runtimeControl,
-		invocation,
-		resultValidator: (result) => {
-			const validation = validateChecklistArtifact(result.text);
-			if (!validation.passed) {
-				throw new Error(`CHECKLIST.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`);
+				relativeCallDir,
+				systemPrompt: REPORT_SYSTEM_PROMPT,
+				userPrompt: attempt === 1 ? baseReportPrompt : `${baseReportPrompt}\n\n${buildMissingHeadingReinforcement(lastReportError!.message)}`,
+				manifest,
+				manifestPath,
+				onStatus,
+				onEvent,
+				statusMessage: `Consolidating final report: REPORT.md`,
+				userPromptTransport: "stdin",
+				runtimeControl,
+				invocation,
+				resultValidator: (result) => {
+					const validation = validateReportArtifact(result.text);
+					if (!validation.passed) {
+						throw new StageValidationError(`REPORT.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`, result);
+					}
+				},
+				persistResult: async (result) => {
+					await writeMarkdownFile(workspace.rootFiles.report, result.text);
+				},
+			});
+			break;
+		} catch (error) {
+			if (error instanceof StageValidationError && attempt < FINAL_STAGE_MAX_RETRIES) {
+				lastReportError = error;
+				markStagePending(manifest.report);
+				await saveManifest(manifestPath, manifest);
+				onStatus?.(`⚠ Report missing headings — retrying (attempt ${attempt + 1}/${FINAL_STAGE_MAX_RETRIES})...`);
+				emitWorkflowEvent(onEvent, {
+					type: "stage_progress",
+					relativeCallDir,
+					requestedLoops: loops,
+					completedLoops: manifest.completedLoops,
+					message: `Report missing headings — retrying (attempt ${attempt + 1}/${FINAL_STAGE_MAX_RETRIES})`,
+					stageName: "report",
+					stageStatus: "pending",
+				});
+			} else {
+				throw error;
 			}
-		},
-		persistResult: async (result) => {
-			await writeMarkdownFile(workspace.rootFiles.checklist, result.text);
-		},
-	});
+		}
+	}
+
+	// F2 fix: Retry checklist stage with heading reinforcement on validation failure.
+	const baseChecklistPrompt = [
+		buildChecklistUserPrompt({ cwd, workspace, requestedLoops: loops, completedLoops: manifest.completedLoops }),
+		promptContext,
+	].filter(Boolean).join("\n\n");
+
+	let lastChecklistError: StageValidationError | undefined;
+	for (let attempt = 1; attempt <= FINAL_STAGE_MAX_RETRIES; attempt++) {
+		try {
+			await runManagedStage({
+				cwd,
+				protectedRoots: [workspace.callDir],
+				modelPattern,
+				thinkingLevel,
+				record: manifest.checklist,
+				stageName: "checklist",
+				requestedLoops: loops,
+				completedLoops: manifest.completedLoops,
+				relativeCallDir,
+				systemPrompt: CHECKLIST_SYSTEM_PROMPT,
+				userPrompt: attempt === 1 ? baseChecklistPrompt : `${baseChecklistPrompt}\n\n${buildMissingHeadingReinforcement(lastChecklistError!.message)}`,
+				manifest,
+				manifestPath,
+				onStatus,
+				onEvent,
+				statusMessage: `Generating action checklist: CHECKLIST.md`,
+				userPromptTransport: "stdin",
+				runtimeControl,
+				invocation,
+				resultValidator: (result) => {
+					const validation = validateChecklistArtifact(result.text);
+					if (!validation.passed) {
+						throw new StageValidationError(`CHECKLIST.md is missing required heading(s): ${validation.missingHeadings.join(", ")}`, result);
+					}
+				},
+				persistResult: async (result) => {
+					await writeMarkdownFile(workspace.rootFiles.checklist, result.text);
+				},
+			});
+			break;
+		} catch (error) {
+			if (error instanceof StageValidationError && attempt < FINAL_STAGE_MAX_RETRIES) {
+				lastChecklistError = error;
+				markStagePending(manifest.checklist);
+				await saveManifest(manifestPath, manifest);
+				onStatus?.(`⚠ Checklist missing headings — retrying (attempt ${attempt + 1}/${FINAL_STAGE_MAX_RETRIES})...`);
+				emitWorkflowEvent(onEvent, {
+					type: "stage_progress",
+					relativeCallDir,
+					requestedLoops: loops,
+					completedLoops: manifest.completedLoops,
+					message: `Checklist missing headings — retrying (attempt ${attempt + 1}/${FINAL_STAGE_MAX_RETRIES})`,
+					stageName: "checklist",
+					stageStatus: "pending",
+				});
+			} else {
+				throw error;
+			}
+		}
+	}
 }
 
 async function copyIfExists(sourcePath: string, targetPath: string): Promise<boolean> {
